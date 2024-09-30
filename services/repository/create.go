@@ -45,6 +45,7 @@ type CreateRepoOptions struct {
 	TrustModel       repo_model.TrustModelType
 	MirrorInterval   string
 	ObjectFormatName string
+	SizeLimit        int64
 }
 
 func prepareRepoCommit(ctx context.Context, repo *repo_model.Repository, tmpDir, repoPath string, opts CreateRepoOptions) error {
@@ -234,6 +235,7 @@ func CreateRepositoryDirectly(ctx context.Context, doer, u *user_model.User, opt
 		Status:                          opts.Status,
 		IsEmpty:                         !opts.AutoInit,
 		TrustModel:                      opts.TrustModel,
+		SizeLimit:                       opts.SizeLimit,
 		IsMirror:                        opts.IsMirror,
 		DefaultBranch:                   opts.DefaultBranch,
 		DefaultWikiBranch:               setting.Repository.DefaultBranch,

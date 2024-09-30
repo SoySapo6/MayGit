@@ -601,6 +601,8 @@ var migrations = []Migration{
 	NewMigration("Add metadata column for comment table", v1_23.AddCommentMetaDataColumn),
 	// v304 -> v305
 	NewMigration("Add index for release sha1", v1_23.AddIndexForReleaseSha1),
+	// to modify later
+	NewMigration("Add size limit on repository", v1_22.AddSizeLimitOnRepo),
 }
 
 // GetCurrentDBVersion returns the current db version

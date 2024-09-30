@@ -16,8 +16,10 @@ import (
 	"code.gitea.io/gitea/modules/log"
 	"code.gitea.io/gitea/modules/setting"
 	"code.gitea.io/gitea/modules/util"
+	"code.gitea.io/gitea/modules/web"
 	"code.gitea.io/gitea/routers/web/explore"
 	"code.gitea.io/gitea/services/context"
+	"code.gitea.io/gitea/services/forms"
 	repo_service "code.gitea.io/gitea/services/repository"
 )
 
@@ -31,12 +33,63 @@ func Repos(ctx *context.Context) {
 	ctx.Data["Title"] = ctx.Tr("admin.repositories")
 	ctx.Data["PageIsAdminRepositories"] = true
 
+	ctx.Data["EnableSizeLimit"] = setting.EnableSizeLimit
+	ctx.Data["RepoSizeLimit"] = base.FileSize(setting.RepoSizeLimit)
+
 	explore.RenderRepoSearch(ctx, &explore.RepoSearchOptions{
 		Private:          true,
 		PageSize:         setting.UI.Admin.RepoPagingNum,
 		TplName:          tplRepos,
 		OnlyShowRelevant: false,
 	})
+}
+
+func UpdateRepoPost(ctx *context.Context) {
+	temp := web.GetForm(ctx)
+	if temp == nil {
+		ctx.Data["Err_Repo_Size_Limit"] = ""
+		explore.RenderRepoSearch(ctx, &explore.RepoSearchOptions{
+			Private:          true,
+			PageSize:         setting.UI.Admin.RepoPagingNum,
+			TplName:          tplRepos,
+			OnlyShowRelevant: false,
+		})
+		return
+	}
+	form := temp.(*forms.UpdateGlobalRepoFrom)
+	ctx.Data["Title"] = ctx.Tr("admin.repositories")
+	ctx.Data["PageIsAdminRepositories"] = true
+
+	repoSizeLimit, err := base.GetFileSize(form.RepoSizeLimit)
+
+	ctx.Data["EnableSizeLimit"] = form.EnableSizeLimit
+	ctx.Data["RepoSizeLimit"] = form.RepoSizeLimit
+
+	if err != nil {
+		ctx.Data["Err_Repo_Size_Limit"] = err.Error()
+		explore.RenderRepoSearch(ctx, &explore.RepoSearchOptions{
+			Private:          true,
+			PageSize:         setting.UI.Admin.RepoPagingNum,
+			TplName:          tplRepos,
+			OnlyShowRelevant: false,
+		})
+		return
+	}
+
+	err = setting.SaveGlobalRepositorySetting(form.EnableSizeLimit, repoSizeLimit)
+	if err != nil {
+		ctx.Data["Err_Repo_Size_Save"] = err.Error()
+		explore.RenderRepoSearch(ctx, &explore.RepoSearchOptions{
+			Private:          true,
+			PageSize:         setting.UI.Admin.RepoPagingNum,
+			TplName:          tplRepos,
+			OnlyShowRelevant: false,
+		})
+		return
+	}
+
+	ctx.Flash.Success(ctx.Tr("admin.config.repository_setting_success"))
+	ctx.Redirect(setting.AppSubURL + "/admin/repos")
 }
 
 // DeleteRepo delete one repository

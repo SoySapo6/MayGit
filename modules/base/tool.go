@@ -119,6 +119,13 @@ func FileSize(s int64) string {
 	return humanize.IBytes(uint64(s))
 }
 
+// Get FileSize bytes value from  String.
+func GetFileSize(s string) (int64, error) {
+	v, err := humanize.ParseBytes(s)
+	iv := int64(v)
+	return iv, err
+}
+
 // EllipsisString returns a truncated short string,
 // it appends '...' in the end of the length of string is too large.
 func EllipsisString(str string, length int) string {

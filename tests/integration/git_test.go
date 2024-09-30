@@ -14,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"code.gitea.io/gitea/modules/git"
 	"code.gitea.io/gitea/modules/gitrepo"
 	"code.gitea.io/gitea/modules/lfs"
+	"code.gitea.io/gitea/modules/log"
 	"code.gitea.io/gitea/modules/setting"
 	api "code.gitea.io/gitea/modules/structs"
 	gitea_context "code.gitea.io/gitea/services/context"
@@ -62,6 +64,8 @@ func testGit(t *testing.T, u *url.URL) {
 
 		dstPath := t.TempDir()
 
+		dstForkedPath := t.TempDir()
+
 		t.Run("CreateRepoInDifferentUser", doAPICreateRepository(forkedUserCtx, false))
 		t.Run("AddUserAsCollaborator", doAPIAddCollaborator(forkedUserCtx, httpContext.Username, perm.AccessModeRead))
 
@@ -81,6 +85,39 @@ func testGit(t *testing.T, u *url.URL) {
 		rawTest(t, &httpContext, little, big, littleLFS, bigLFS)
 		mediaTest(t, &httpContext, little, big, littleLFS, bigLFS)
 
+		t.Run("SizeLimit", func(t *testing.T) {
+			setting.SaveGlobalRepositorySetting(true, 0)
+			t.Run("Under", func(t *testing.T) {
+				defer tests.PrintCurrentTest(t)()
+				doCommitAndPush(t, littleSize, dstPath, "data-file-")
+			})
+			t.Run("Over", func(t *testing.T) {
+				defer tests.PrintCurrentTest(t)()
+				u.Path = forkedUserCtx.GitPath()
+				u.User = url.UserPassword(forkedUserCtx.Username, userPassword)
+				t.Run("Clone", doGitClone(dstForkedPath, u))
+				t.Run("APISetRepoSizeLimit", doAPISetRepoSizeLimit(forkedUserCtx, forkedUserCtx.Username, forkedUserCtx.Reponame, littleSize))
+				doCommitAndPushWithExpectedError(t, bigSize, dstForkedPath, "data-file-")
+			})
+			t.Run("UnderAfterResize", func(t *testing.T) {
+				defer tests.PrintCurrentTest(t)()
+				t.Run("APISetRepoSizeLimit", doAPISetRepoSizeLimit(forkedUserCtx, forkedUserCtx.Username, forkedUserCtx.Reponame, bigSize*10))
+				doCommitAndPush(t, littleSize, dstPath, "data-file-")
+			})
+			t.Run("Deletion", func(t *testing.T) {
+				defer tests.PrintCurrentTest(t)()
+				doCommitAndPush(t, littleSize, dstPath, "data-file-")
+				bigFileName := doCommitAndPush(t, bigSize, dstPath, "data-file-")
+				oldRepoSize := doGetRemoteRepoSizeViaAPI(t, forkedUserCtx)
+				lastCommitID := doGetAddCommitID(t, dstPath, bigFileName)
+				doDeleteAndPush(t, dstPath, bigFileName)
+				doRebaseCommitAndPush(t, dstPath, lastCommitID)
+				newRepoSize := doGetRemoteRepoSizeViaAPI(t, forkedUserCtx)
+				assert.LessOrEqual(t, newRepoSize, oldRepoSize)
+				setting.SaveGlobalRepositorySetting(false, 0)
+			})
+		})
+		t.Run("CreateAgitFlowPull", doCreateAgitFlowPull(dstPath, &httpContext, "master", "test/head"))
 		t.Run("CreateAgitFlowPull", doCreateAgitFlowPull(dstPath, &httpContext, "test/head"))
 		t.Run("BranchProtectMerge", doBranchProtectPRMerge(&httpContext, dstPath))
 		t.Run("AutoMerge", doAutoPRMerge(&httpContext, dstPath))
@@ -92,6 +129,8 @@ func testGit(t *testing.T, u *url.URL) {
 			mediaTest(t, &forkedUserCtx, little, big, littleLFS, bigLFS)
 		})
 
+		u.Path = httpContext.GitPath()
+		u.User = url.UserPassword(username, userPassword)
 		t.Run("PushCreate", doPushCreate(httpContext, u))
 	})
 	t.Run("SSH", func(t *testing.T) {
@@ -190,7 +229,9 @@ func commitAndPushTest(t *testing.T, dstPath, prefix string) (little, big string
 		defer tests.PrintCurrentTest(t)()
 		t.Run("Little", func(t *testing.T) {
 			defer tests.PrintCurrentTest(t)()
+			log.Error("before doCommitAndPush")
 			little = doCommitAndPush(t, littleSize, dstPath, prefix)
+			log.Error("after doCommitAndPush")
 		})
 		t.Run("Big", func(t *testing.T) {
 			if testing.Short() {
@@ -291,11 +332,63 @@ func lockFileTest(t *testing.T, filename, repoPath string) {
 	assert.NoError(t, err)
 }
 
+func doGetRemoteRepoSizeViaAPI(t *testing.T, ctx APITestContext) int64 {
+	return doAPIGetRepositorySize(ctx, ctx.Username, ctx.Reponame)(t)
+}
+
+func doDeleteAndPush(t *testing.T, repoPath, filename string) {
+	_, _, err := git.NewCommand(git.DefaultContext, "rm").AddDashesAndList(filename).RunStdString(&git.RunOpts{Dir: repoPath}) // Delete
+	assert.NoError(t, err)
+	signature := git.Signature{
+		Email: "user2@example.com",
+		Name:  "User Two",
+		When:  time.Now(),
+	}
+	_, _, err = git.NewCommand(git.DefaultContext, "status").RunStdString(&git.RunOpts{Dir: repoPath})
+	assert.NoError(t, err)
+	err2 := git.CommitChanges(repoPath, git.CommitChangesOptions{ // Commit
+		Committer: &signature,
+		Author:    &signature,
+		Message:   "Delete Commit",
+	})
+	assert.NoError(t, err2)
+	_, _, err = git.NewCommand(git.DefaultContext, "status").RunStdString(&git.RunOpts{Dir: repoPath})
+	assert.NoError(t, err)
+	_, _, err = git.NewCommand(git.DefaultContext, "push", "origin", "master").RunStdString(&git.RunOpts{Dir: repoPath}) // Push
+	assert.NoError(t, err)
+}
+
+func doGetAddCommitID(t *testing.T, repoPath, filename string) string {
+	output, _, err := git.NewCommand(git.DefaultContext, "log", "origin", "master").RunStdString(&git.RunOpts{Dir: repoPath}) // Push
+	assert.NoError(t, err)
+	list := strings.Fields(output)
+	assert.LessOrEqual(t, 2, len(list))
+	return list[1]
+}
+
+func doRebaseCommitAndPush(t *testing.T, repoPath, commitID string) {
+	command := git.NewCommand(git.DefaultContext, "rebase", "--interactive").AddDashesAndList(commitID)
+	env := os.Environ()
+	env = append(env, "GIT_SEQUENCE_EDITOR=true")
+	_, _, err := command.RunStdString(&git.RunOpts{Dir: repoPath, Env: env}) // Push
+	assert.NoError(t, err)
+	_, _, err = git.NewCommand(git.DefaultContext, "push", "origin", "master", "-f").RunStdString(&git.RunOpts{Dir: repoPath}) // Push
+	assert.NoError(t, err)
+}
+
 func doCommitAndPush(t *testing.T, size int, repoPath, prefix string) string {
 	name, err := generateCommitWithNewData(size, repoPath, "user2@example.com", "User Two", prefix)
 	assert.NoError(t, err)
 	_, _, err = git.NewCommand(git.DefaultContext, "push", "origin", "master").RunStdString(&git.RunOpts{Dir: repoPath}) // Push
 	assert.NoError(t, err)
+	return name
+}
+
+func doCommitAndPushWithExpectedError(t *testing.T, size int, repoPath, prefix string) string {
+	name, err := generateCommitWithNewData(size, repoPath, "user2@example.com", "User Two", prefix)
+	assert.NoError(t, err)
+	_, _, err = git.NewCommand(git.DefaultContext, "push", "origin", "master").RunStdString(&git.RunOpts{Dir: repoPath}) // Push
+	assert.Error(t, err)
 	return name
 }
 
