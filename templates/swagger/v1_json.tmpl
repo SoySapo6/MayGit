@@ -5446,7 +5446,7 @@
         "tags": [
           "repository"
         ],
-        "summary": "Get the pull request of the commit",
+        "summary": "Get the merged pull request of the commit",
         "operationId": "repoGetCommitPullRequest",
         "parameters": [
           {
@@ -10633,6 +10633,42 @@
         "responses": {
           "200": {
             "$ref": "#/responses/LanguageStatistics"
+          },
+          "404": {
+            "$ref": "#/responses/notFound"
+          }
+        }
+      }
+    },
+    "/repos/{owner}/{repo}/licenses": {
+      "get": {
+        "produces": [
+          "application/json"
+        ],
+        "tags": [
+          "repository"
+        ],
+        "summary": "Get repo licenses",
+        "operationId": "repoGetLicenses",
+        "parameters": [
+          {
+            "type": "string",
+            "description": "owner of the repo",
+            "name": "owner",
+            "in": "path",
+            "required": true
+          },
+          {
+            "type": "string",
+            "description": "name of the repo",
+            "name": "repo",
+            "in": "path",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/responses/LicensesList"
           },
           "404": {
             "$ref": "#/responses/notFound"
@@ -22615,6 +22651,14 @@
           "type": "string",
           "x-go-name": "AuthUsername"
         },
+        "aws_access_key_id": {
+          "type": "string",
+          "x-go-name": "AWSAccessKeyID"
+        },
+        "aws_secret_access_key": {
+          "type": "string",
+          "x-go-name": "AWSSecretAccessKey"
+        },
         "clone_addr": {
           "type": "string",
           "x-go-name": "CloneAddr"
@@ -24133,6 +24177,13 @@
         "languages_url": {
           "type": "string",
           "x-go-name": "LanguagesURL"
+        },
+        "licenses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "x-go-name": "Licenses"
         },
         "link": {
           "type": "string",
@@ -25706,6 +25757,15 @@
         "type": "array",
         "items": {
           "$ref": "#/definitions/LicensesTemplateListEntry"
+        }
+      }
+    },
+    "LicensesList": {
+      "description": "LicensesList",
+      "schema": {
+        "type": "array",
+        "items": {
+          "type": "string"
         }
       }
     },
