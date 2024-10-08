@@ -89,6 +89,7 @@ import (
 	"code.gitea.io/gitea/routers/api/v1/notify"
 	"code.gitea.io/gitea/routers/api/v1/org"
 	"code.gitea.io/gitea/routers/api/v1/packages"
+	"code.gitea.io/gitea/routers/api/v1/projects"
 	"code.gitea.io/gitea/routers/api/v1/repo"
 	"code.gitea.io/gitea/routers/api/v1/settings"
 	"code.gitea.io/gitea/routers/api/v1/user"
@@ -1457,6 +1458,10 @@ func Routes() *web.Router {
 						Patch(reqToken(), reqRepoWriter(unit.TypeIssues, unit.TypePullRequests), bind(api.EditMilestoneOption{}), repo.EditMilestone).
 						Delete(reqToken(), reqRepoWriter(unit.TypeIssues, unit.TypePullRequests), repo.DeleteMilestone)
 				})
+				m.Group("/projects", func() {
+					m.Combo("").Get(projects.ListRepoProjects).
+						Post(bind(api.NewProjectPayload{}), projects.CreateRepoProject)
+				}, mustEnableIssues)
 			}, repoAssignment())
 		}, tokenRequiresScopes(auth_model.AccessTokenScopeCategoryIssue))
 
@@ -1601,6 +1606,11 @@ func Routes() *web.Router {
 			})
 		}, tokenRequiresScopes(auth_model.AccessTokenScopeCategoryAdmin), reqToken(), reqSiteAdmin())
 
+		m.Group("/projects", func() {
+			m.Combo("/{id}").Get(projects.GetProject).
+				Patch(bind(api.UpdateProjectPayload{}), projects.UpdateProject).
+				Delete(projects.DeleteProject)
+		}, tokenRequiresScopes(auth_model.AccessTokenScopeCategoryIssue), reqToken())
 		m.Group("/topics", func() {
 			m.Get("/search", repo.TopicSearch)
 		}, tokenRequiresScopes(auth_model.AccessTokenScopeCategoryRepository))
