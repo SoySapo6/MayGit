@@ -6,6 +6,12 @@ import {
   initRepoIssueTitleEdit, initRepoIssueWipToggle,
   initRepoPullRequestUpdate,
 } from './repo-issue.ts';
+import {
+  initRepoConversationCommentDelete,
+} from './repo-conversation.ts';
+import {
+  initRepoConversationCommentEdit,
+} from './repo-conversation-edit.ts';
 import {initUnicodeEscapeButton} from './repo-unicode-escape.ts';
 import {initRepoBranchTagSelector} from '../components/RepoBranchTagSelector.vue';
 import {
@@ -74,7 +80,6 @@ export function initRepository() {
     initRepoIssueDependencyDelete();
     initRepoIssueCodeCommentCancel();
     initRepoPullRequestUpdate();
-    initCompReactionSelector();
 
     initRepoPullRequestMergeForm();
     initRepoPullRequestCommitStatus();
@@ -91,6 +96,15 @@ export function initRepository() {
       const $form = $repoComparePull.find('.pullrequest-form');
       showElem($form);
     });
+  }
+
+  // Conversations
+  if ($('.conversation-container').length > 0) {
+    initCompReactionSelector();
+    initRepoConversationCommentDelete();
+    if ($('.repository.view.issue').length === 0) {
+      initRepoConversationCommentEdit();
+    }
   }
 
   initUnicodeEscapeButton();

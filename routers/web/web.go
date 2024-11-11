@@ -815,6 +815,7 @@ func registerRoutes(m *web.Router) {
 	reqRepoPullsReader := context.RequireRepoReader(unit.TypePullRequests)
 	reqRepoIssuesOrPullsWriter := context.RequireRepoWriterOr(unit.TypeIssues, unit.TypePullRequests)
 	reqRepoIssuesOrPullsReader := context.RequireRepoReaderOr(unit.TypeIssues, unit.TypePullRequests)
+	reqRepoConversationReader := context.RequireRepoReader(unit.TypeConversations)
 	reqRepoProjectsReader := context.RequireRepoReader(unit.TypeProjects)
 	reqRepoProjectsWriter := context.RequireRepoWriter(unit.TypeProjects)
 	reqRepoActionsReader := context.RequireRepoReader(unit.TypeActions)
@@ -1276,6 +1277,20 @@ func registerRoutes(m *web.Router) {
 		}, context.RepoMustNotBeArchived())
 	}, reqSignIn, context.RepoAssignment, reqRepoIssuesOrPullsReader)
 	// end "/{username}/{reponame}": create or edit issues, pulls, labels, milestones
+
+	m.Group("/{username}/{reponame}", func() { // conversations/conversation comments
+		m.Group("/conversations", func() {
+			m.Group("/{index}", func() {
+				m.Combo("/comments").Post(repo.ConversationMustAllowUserComment, web.Bind(forms.CreateConversationCommentForm{}), repo.NewConversationComment)
+			}, context.RepoMustNotBeArchived())
+
+			m.Group("/comments/{id}", func() {
+				m.Post("", repo.UpdateConversationCommentContent)
+				m.Post("/delete", repo.DeleteConversationComment)
+				m.Post("/reactions/{action}", web.Bind(forms.ReactionForm{}), repo.ChangeConversationCommentReaction)
+			}, context.RepoMustNotBeArchived())
+		})
+	}, reqSignIn, context.RepoAssignment, reqRepoConversationReader)
 
 	m.Group("/{username}/{reponame}", func() { // repo code
 		m.Group("", func() {

@@ -8,11 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"math/big"
 	"net/http"
 	"path"
 	"strings"
 
 	asymkey_model "code.gitea.io/gitea/models/asymkey"
+	conversation_model "code.gitea.io/gitea/models/conversations"
 	"code.gitea.io/gitea/models/db"
 	git_model "code.gitea.io/gitea/models/git"
 	repo_model "code.gitea.io/gitea/models/repo"
@@ -25,11 +27,13 @@ import (
 	"code.gitea.io/gitea/modules/gitrepo"
 	"code.gitea.io/gitea/modules/log"
 	"code.gitea.io/gitea/modules/markup"
+	"code.gitea.io/gitea/modules/markup/markdown"
 	"code.gitea.io/gitea/modules/setting"
 	"code.gitea.io/gitea/modules/util"
 	"code.gitea.io/gitea/services/context"
 	"code.gitea.io/gitea/services/gitdiff"
 	repo_service "code.gitea.io/gitea/services/repository"
+	user_service "code.gitea.io/gitea/services/user"
 )
 
 const (
@@ -412,6 +416,73 @@ func Diff(ctx *context.Context) {
 	if err != nil {
 		ctx.ServerError("commit.GetBranchName", err)
 		return
+	}
+
+	conversation, err := conversation_model.GetConversationByCommitID(ctx, commitID)
+	if err != nil {
+		// If failed to get a conversation, generate a new one for this commit
+		if conversation_model.IsErrConversationNotExist(err) {
+			err = conversation_model.NewConversation(ctx, ctx.Repo.Repository, &conversation_model.Conversation{
+				RepoID:    ctx.Repo.Repository.ID,
+				CommitSha: commitID,
+				Type:      conversation_model.ConversationTypeCommit,
+			}, []string{})
+			if err != nil {
+				ctx.ServerError("commit.NewConversation", err)
+				return
+			}
+			// And attempt to get it again
+			conversation, err = conversation_model.GetConversationByCommitID(ctx, commitID)
+			if err != nil {
+				ctx.ServerError("commit.GetConversationAfterNew", err)
+				return
+			}
+		} else {
+			ctx.ServerError("commit.GetConversation", err)
+			return
+		}
+	}
+
+	for _, comment := range conversation.Comments {
+		comment.Conversation = conversation
+
+		if comment.Type == conversation_model.CommentTypeComment {
+			comment.RenderedContent, err = markdown.RenderString(&markup.RenderContext{
+				Links: markup.Links{
+					Base: ctx.Repo.RepoLink,
+				},
+				Metas:   ctx.Repo.Repository.ComposeMetas(ctx),
+				GitRepo: ctx.Repo.GitRepo,
+				Repo:    ctx.Repo.Repository,
+				Ctx:     ctx,
+			}, comment.Content)
+			if err != nil {
+				ctx.ServerError("RenderString", err)
+				return
+			}
+		}
+	}
+
+	ctx.Data["Conversation"] = conversation
+	ctx.Data["ConversationTitle"] = "Comments"
+	ctx.Data["Comments"] = conversation.Comments
+	ctx.Data["IsCommit"] = true
+
+	ctx.Data["CanBlockUser"] = func(blocker, blockee *user_model.User) bool {
+		return user_service.CanBlockUser(ctx, ctx.Doer, blocker, blockee)
+	}
+
+	var hiddenCommentTypes *big.Int
+	if ctx.IsSigned {
+		val, err := user_model.GetUserSetting(ctx, ctx.Doer.ID, user_model.SettingsKeyHiddenCommentTypes)
+		if err != nil {
+			ctx.ServerError("GetUserSetting", err)
+			return
+		}
+		hiddenCommentTypes, _ = new(big.Int).SetString(val, 10) // we can safely ignore the failed conversion here
+	}
+	ctx.Data["ShouldShowCommentType"] = func(commentType conversation_model.CommentType) bool {
+		return hiddenCommentTypes == nil || hiddenCommentTypes.Bit(int(commentType)) == 0
 	}
 
 	ctx.HTML(http.StatusOK, tplCommitPage)

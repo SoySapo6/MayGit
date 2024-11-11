@@ -6,6 +6,7 @@ package repo
 import (
 	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 
 	issues_model "code.gitea.io/gitea/models/issues"
@@ -46,6 +47,8 @@ func RenderNewCodeCommentForm(ctx *context.Context) {
 	}
 	ctx.Data["PageIsPullFiles"] = true
 	ctx.Data["Issue"] = issue
+	ctx.Data["IsIssue"] = true
+	ctx.Data["Comments"] = issue.Comments
 	ctx.Data["CurrentReview"] = currentReview
 	pullHeadCommitID, err := ctx.Repo.GitRepo.GetRefCommitID(issue.PullRequest.GetGitRefName())
 	if err != nil {
@@ -192,11 +195,26 @@ func renderConversation(ctx *context.Context, comment *issues_model.Comment, ori
 		ctx.ServerError("CanMarkConversation", err)
 		return
 	}
-	ctx.Data["Issue"] = comment.Issue
-	if err = comment.Issue.LoadPullRequest(ctx); err != nil {
-		ctx.ServerError("comment.Issue.LoadPullRequest", err)
+	if err = comment.Issue.LoadAttributes(ctx); err != nil {
+		ctx.ServerError("comment.Issue.LoadAttributes", err)
 		return
 	}
+
+	var hiddenCommentTypes *big.Int
+	if ctx.IsSigned {
+		val, err := user_model.GetUserSetting(ctx, ctx.Doer.ID, user_model.SettingsKeyHiddenCommentTypes)
+		if err != nil {
+			ctx.ServerError("GetUserSetting", err)
+			return
+		}
+		hiddenCommentTypes, _ = new(big.Int).SetString(val, 10) // we can safely ignore the failed conversion here
+	}
+	ctx.Data["ShouldShowCommentType"] = func(commentType issues_model.CommentType) bool {
+		return hiddenCommentTypes == nil || hiddenCommentTypes.Bit(int(commentType)) == 0
+	}
+	ctx.Data["Issue"] = comment.Issue
+	ctx.Data["IsIssue"] = true
+	ctx.Data["Comments"] = comment.Issue.Comments
 	pullHeadCommitID, err := ctx.Repo.GitRepo.GetRefCommitID(comment.Issue.PullRequest.GetGitRefName())
 	if err != nil {
 		ctx.ServerError("GetRefCommitID", err)

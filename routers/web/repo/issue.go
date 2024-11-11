@@ -2101,6 +2101,8 @@ func ViewIssue(ctx *context.Context) {
 	ctx.Data["Participants"] = participants
 	ctx.Data["NumParticipants"] = len(participants)
 	ctx.Data["Issue"] = issue
+	ctx.Data["IsIssue"] = true
+	ctx.Data["Comments"] = issue.Comments
 	ctx.Data["Reference"] = issue.Ref
 	ctx.Data["SignInLink"] = setting.AppSubURL + "/user/login?redirect_to=" + url.QueryEscape(ctx.Data["Link"].(string))
 	ctx.Data["IsIssuePoster"] = ctx.IsSigned && issue.IsPoster(ctx.Doer.ID)
@@ -2617,72 +2619,7 @@ func SearchIssues(ctx *context.Context) {
 		isClosed = optional.Some(false)
 	}
 
-	var (
-		repoIDs   []int64
-		allPublic bool
-	)
-	{
-		// find repos user can access (for issue search)
-		opts := &repo_model.SearchRepoOptions{
-			Private:     false,
-			AllPublic:   true,
-			TopicOnly:   false,
-			Collaborate: optional.None[bool](),
-			// This needs to be a column that is not nil in fixtures or
-			// MySQL will return different results when sorting by null in some cases
-			OrderBy: db.SearchOrderByAlphabetically,
-			Actor:   ctx.Doer,
-		}
-		if ctx.IsSigned {
-			opts.Private = true
-			opts.AllLimited = true
-		}
-		if ctx.FormString("owner") != "" {
-			owner, err := user_model.GetUserByName(ctx, ctx.FormString("owner"))
-			if err != nil {
-				if user_model.IsErrUserNotExist(err) {
-					ctx.Error(http.StatusBadRequest, "Owner not found", err.Error())
-				} else {
-					ctx.Error(http.StatusInternalServerError, "GetUserByName", err.Error())
-				}
-				return
-			}
-			opts.OwnerID = owner.ID
-			opts.AllLimited = false
-			opts.AllPublic = false
-			opts.Collaborate = optional.Some(false)
-		}
-		if ctx.FormString("team") != "" {
-			if ctx.FormString("owner") == "" {
-				ctx.Error(http.StatusBadRequest, "", "Owner organisation is required for filtering on team")
-				return
-			}
-			team, err := organization.GetTeam(ctx, opts.OwnerID, ctx.FormString("team"))
-			if err != nil {
-				if organization.IsErrTeamNotExist(err) {
-					ctx.Error(http.StatusBadRequest, "Team not found", err.Error())
-				} else {
-					ctx.Error(http.StatusInternalServerError, "GetUserByName", err.Error())
-				}
-				return
-			}
-			opts.TeamID = team.ID
-		}
-
-		if opts.AllPublic {
-			allPublic = true
-			opts.AllPublic = false // set it false to avoid returning too many repos, we could filter by indexer
-		}
-		repoIDs, _, err = repo_model.SearchRepositoryIDs(ctx, opts)
-		if err != nil {
-			ctx.Error(http.StatusInternalServerError, "SearchRepositoryIDs", err.Error())
-			return
-		}
-		if len(repoIDs) == 0 {
-			// no repos found, don't let the indexer return all repos
-			repoIDs = []int64{0}
-		}
-	}
+	repoIDs, allPublic := GetUserAccessibleRepo(ctx)
 
 	keyword := ctx.FormTrim("q")
 	if strings.IndexByte(keyword, 0) >= 0 {
@@ -3368,37 +3305,13 @@ func ChangeIssueReaction(ctx *context.Context) {
 
 	switch ctx.PathParam(":action") {
 	case "react":
-		reaction, err := issue_service.CreateIssueReaction(ctx, ctx.Doer, issue, form.Content)
-		if err != nil {
-			if issues_model.IsErrForbiddenIssueReaction(err) || errors.Is(err, user_model.ErrBlockedUser) {
-				ctx.ServerError("ChangeIssueReaction", err)
-				return
-			}
-			log.Info("CreateIssueReaction: %s", err)
+		if err := AddReaction(ctx, form, nil, issue); err != nil {
 			break
 		}
-		// Reload new reactions
-		issue.Reactions = nil
-		if err = issue.LoadAttributes(ctx); err != nil {
-			log.Info("issue.LoadAttributes: %s", err)
-			break
-		}
-
-		log.Trace("Reaction for issue created: %d/%d/%d", ctx.Repo.Repository.ID, issue.ID, reaction.ID)
 	case "unreact":
-		if err := issues_model.DeleteIssueReaction(ctx, ctx.Doer.ID, issue.ID, form.Content); err != nil {
-			ctx.ServerError("DeleteIssueReaction", err)
-			return
-		}
-
-		// Reload new reactions
-		issue.Reactions = nil
-		if err := issue.LoadAttributes(ctx); err != nil {
-			log.Info("issue.LoadAttributes: %s", err)
+		if err := RemoveReaction(ctx, form, nil, issue); err != nil {
 			break
 		}
-
-		log.Trace("Reaction for issue removed: %d/%d", ctx.Repo.Repository.ID, issue.ID)
 	default:
 		ctx.NotFound(fmt.Sprintf("Unknown action %s", ctx.PathParam(":action")), nil)
 		return
