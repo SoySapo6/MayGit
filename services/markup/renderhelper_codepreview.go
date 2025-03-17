@@ -61,13 +61,13 @@ func renderRepoFileCodePreview(ctx context.Context, opts markup.RenderCodePrevie
 		return "", err
 	}
 
-	language, _ := files.TryGetContentLanguage(gitRepo, opts.CommitID, opts.FilePath)
+	language, _ := files.TryGetContentLanguage(ctx, gitRepo, opts.CommitID, opts.FilePath)
 	blob, err := commit.GetBlobByPath(opts.FilePath)
 	if err != nil {
 		return "", err
 	}
 
-	if blob.Size() > setting.UI.MaxDisplayFileSize {
+	if blob.Size(ctx) > setting.UI.MaxDisplayFileSize {
 		return "", fmt.Errorf("file is too large")
 	}
 
