@@ -1,0 +1,16 @@
+-
+  id: 1
+  setting_key: revision
+  version: 1
+
+-
+  id: 2
+  setting_key: picture.enable_federated_avatar
+  setting_value: false
+  version: 1
+
+-
+  id: 3
+  setting_key: picture.disable_gravatar
+  setting_value: true
+  version: 1

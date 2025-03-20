@@ -377,6 +377,7 @@ func prepareMigrationTasks() []*migration {
 		newMigration(314, "Update OwnerID as zero for repository level action tables", v1_24.UpdateOwnerIDOfRepoLevelActionsTables),
 		newMigration(315, "Add Ephemeral to ActionRunner", v1_24.AddEphemeralToActionRunner),
 		newMigration(316, "Add description for secrets and variables", v1_24.AddDescriptionForSecretsAndVariables),
+		newMigration(317, "Migrate the configuration of the ui section of the ini configuration file to the system setting table.", v1_24.MigrateIniToDatabase),
 	}
 	return preparedMigrations
 }

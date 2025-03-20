@@ -5,6 +5,7 @@
 package admin
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -19,7 +20,9 @@ import (
 	"code.gitea.io/gitea/modules/setting/config"
 	"code.gitea.io/gitea/modules/templates"
 	"code.gitea.io/gitea/modules/util"
+	"code.gitea.io/gitea/modules/web"
 	"code.gitea.io/gitea/services/context"
+	"code.gitea.io/gitea/services/forms"
 	"code.gitea.io/gitea/services/mailer"
 
 	"gitea.com/go-chi/session"
@@ -191,6 +194,7 @@ func ConfigSettings(ctx *context.Context) {
 	ctx.Data["Title"] = ctx.Tr("admin.config_settings")
 	ctx.Data["PageIsAdminConfig"] = true
 	ctx.Data["PageIsAdminConfigSettings"] = true
+	ctx.Data["UI"] = setting.Config().UI.ToStruct(ctx)
 	ctx.Data["DefaultOpenWithEditorAppsString"] = setting.DefaultOpenWithEditorApps().ToTextareaString()
 	ctx.HTML(http.StatusOK, tplConfigSettings)
 }
@@ -252,4 +256,36 @@ func ChangeConfig(ctx *context.Context) {
 
 	config.GetDynGetter().InvalidateCache()
 	ctx.JSONOK()
+}
+
+func ChangeUIConfig(ctx *context.Context) {
+	form := web.GetForm(ctx).(*forms.UIForm)
+	log.Debug("ChangeUIConfig form: %+v", form)
+	formMap := make(map[string]string)
+	formMap[fmt.Sprintf("ui.%s", util.ToSnakeCase("EXPLORE_PAGING_NUM"))] = strconv.Itoa(form.ExplorePagingNum)
+	formMap[fmt.Sprintf("ui.%s", util.ToSnakeCase("SITEMAP_PAGING_NUM"))] = strconv.Itoa(form.SitemapPagingNum)
+	formMap[fmt.Sprintf("ui.%s", util.ToSnakeCase("ISSUE_PAGING_NUM"))] = strconv.Itoa(form.IssuePagingNum)
+	formMap[fmt.Sprintf("ui.%s", util.ToSnakeCase("REPO_SEARCH_PAGING_NUM"))] = strconv.Itoa(form.RepoSearchPagingNum)
+	formMap[fmt.Sprintf("ui.%s", util.ToSnakeCase("MEMBERS_PAGING_NUM"))] = strconv.Itoa(form.MembersPagingNum)
+	formMap[fmt.Sprintf("ui.%s", util.ToSnakeCase("FEED_MAX_COMMIT_NUM"))] = strconv.Itoa(form.FeedMaxCommitNum)
+	formMap[fmt.Sprintf("ui.%s", util.ToSnakeCase("FEED_PAGING_NUM"))] = strconv.Itoa(form.FeedPagingNum)
+	formMap[fmt.Sprintf("ui.%s", util.ToSnakeCase("PACKAGES_PAGING_NUM"))] = strconv.Itoa(form.PackagesPagingNum)
+	formMap[fmt.Sprintf("ui.%s", util.ToSnakeCase("CODE_COMMENT_LINES"))] = strconv.Itoa(form.CodeCommentLines)
+	formMap[fmt.Sprintf("ui.%s", util.ToSnakeCase("SHOW_USER_EMAIL"))] = strconv.FormatBool(form.ShowUserEmail)
+	formMap[fmt.Sprintf("ui.%s", util.ToSnakeCase("SEARCH_REPO_DESCRIPTION"))] = strconv.FormatBool(form.SearchRepoDescription)
+	formMap[fmt.Sprintf("ui.%s", util.ToSnakeCase("ONLY_SHOW_RELEVANT_REPOS"))] = strconv.FormatBool(form.OnlyShowRelevantRepos)
+	formMap[fmt.Sprintf("ui.%s", util.ToSnakeCase("EXPLORE_PAGING_DEFAULT_SORT"))] = fmt.Sprintf("\"%s\"", form.ExplorePagingDefaultSort)
+
+	log.Debug("ChangeUIConfig form: %+v", formMap)
+
+	if err := system_model.SetSettings(ctx, formMap); err != nil {
+		log.Error("set ui configuration failed: %v", err)
+		ctx.ServerError("SetSettings", err)
+		return
+	}
+
+	config.GetDynGetter().InvalidateCache()
+
+	ctx.Flash.Success(ctx.Tr("admin.dashboard.update_settings_success"))
+	ctx.Redirect(setting.AppSubURL + "/-/admin/config/settings")
 }
