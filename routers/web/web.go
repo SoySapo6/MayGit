@@ -1314,9 +1314,12 @@ func registerWebRoutes(m *web.Router) {
 	m.Group("/{username}/{reponame}", func() { // repo code
 		m.Group("", func() {
 			m.Group("", func() {
-				m.Post("/_preview/*", web.Bind(forms.EditPreviewDiffForm{}), repo.DiffPreviewPost)
 				m.Combo("/_edit/*").Get(repo.EditFile).
 					Post(web.Bind(forms.EditRepoFileForm{}), repo.EditFilePost)
+				m.Combo("/_fork_to_edit/*").
+					Post(web.Bind(forms.ForkToEditRepoFileForm{}), repo.ForkToEditFilePost)
+			}, context.RepoRefByType(git.RefTypeBranch), repo.WebGitOperationCommonData)
+			m.Group("", func() {
 				m.Combo("/_new/*").Get(repo.NewFile).
 					Post(web.Bind(forms.EditRepoFileForm{}), repo.NewFilePost)
 				m.Combo("/_delete/*").Get(repo.DeleteFile).

@@ -733,6 +733,17 @@ func (f *EditPreviewDiffForm) Validate(req *http.Request, errs binding.Errors) b
 	return middleware.Validate(errs, ctx.Data, f, ctx.Locale)
 }
 
+// ForkToEditRepoFileForm form for forking the repo to edit a file
+type ForkToEditRepoFileForm struct {
+	TreePath string `binding:"Required;MaxSize(500)"`
+}
+
+// Validate validates the fields
+func (f *ForkToEditRepoFileForm) Validate(req *http.Request, errs binding.Errors) binding.Errors {
+	ctx := context.GetValidateContext(req)
+	return middleware.Validate(errs, ctx.Data, f, ctx.Locale)
+}
+
 // _________ .__                                 __________.__        __
 // \_   ___ \|  |__   __________________ ___.__. \______   \__| ____ |  | __
 // /    \  \/|  |  \_/ __ \_  __ \_  __ <   |  |  |     ___/  |/ ___\|  |/ /

@@ -24,7 +24,7 @@ const (
 
 // NewDiffPatch render create patch page
 func NewDiffPatch(ctx *context.Context) {
-	canCommit := renderCommitRights(ctx)
+	canCommit := renderCommitRights(ctx, ctx.Repo.Repository)
 
 	ctx.Data["PageIsPatch"] = true
 
@@ -35,7 +35,7 @@ func NewDiffPatch(ctx *context.Context) {
 	} else {
 		ctx.Data["commit_choice"] = frmCommitChoiceNewBranch
 	}
-	ctx.Data["new_branch_name"] = GetUniquePatchBranchName(ctx)
+	ctx.Data["new_branch_name"] = GetUniquePatchBranchName(ctx, ctx.Repo.Repository)
 	ctx.Data["last_commit"] = ctx.Repo.CommitID
 	ctx.Data["LineWrapExtensions"] = strings.Join(setting.Repository.Editor.LineWrapExtensions, ",")
 	ctx.Data["BranchLink"] = ctx.Repo.RepoLink + "/src/" + ctx.Repo.RefTypeNameSubURL()
@@ -47,7 +47,7 @@ func NewDiffPatch(ctx *context.Context) {
 func NewDiffPatchPost(ctx *context.Context) {
 	form := web.GetForm(ctx).(*forms.EditRepoFileForm)
 
-	canCommit := renderCommitRights(ctx)
+	canCommit := renderCommitRights(ctx, ctx.Repo.Repository)
 	branchName := ctx.Repo.BranchName
 	if form.CommitChoice == frmCommitChoiceNewBranch {
 		branchName = form.NewBranchName

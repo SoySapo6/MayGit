@@ -255,7 +255,8 @@ func prepareToRenderFile(ctx *context.Context, entry *git.TreeEntry) {
 			} else if !ctx.Repo.RefFullName.IsBranch() {
 				ctx.Data["EditFileTooltip"] = ctx.Tr("repo.editor.must_be_on_a_branch")
 			} else if !ctx.Repo.CanWriteToBranch(ctx, ctx.Doer, ctx.Repo.BranchName) {
-				ctx.Data["EditFileTooltip"] = ctx.Tr("repo.editor.fork_before_edit")
+				ctx.Data["CanEditFile"] = true
+				ctx.Data["EditFileTooltip"] = ctx.Tr("repo.editor.edit_this_file")
 			}
 		}
 

@@ -125,6 +125,11 @@ func getForkRepository(ctx *context.Context) *repo_model.Repository {
 // Fork render repository fork page
 func Fork(ctx *context.Context) {
 	ctx.Data["Title"] = ctx.Tr("new_fork")
+
+	redirectTo := ctx.FormString("redirect_to_edit")
+	ctx.Data["ForkForEdit"] = len(redirectTo) > 0
+	ctx.Data["ForkRedirectTo"] = redirectTo
+
 	getForkRepository(ctx)
 	if ctx.Written() {
 		return
@@ -189,44 +194,53 @@ func ForkPost(ctx *context.Context) {
 		}
 	}
 
-	repo, err := repo_service.ForkRepository(ctx, ctx.Doer, ctxUser, repo_service.ForkRepoOptions{
+	repo, err := ForkRepository(ctx, ctxUser, repo_service.ForkRepoOptions{
 		BaseRepo:     forkRepo,
 		Name:         form.RepoName,
 		Description:  form.Description,
 		SingleBranch: form.ForkSingleBranch,
-	})
+	}, tplFork, form)
+	if err != nil {
+		return
+	}
+
+	ctx.Redirect(ctxUser.HomeLink() + "/" + url.PathEscape(repo.Name))
+}
+
+func ForkRepository(ctx *context.Context, user *user_model.User, opts repo_service.ForkRepoOptions, tpl templates.TplName, form any) (*repo_model.Repository, error) {
+	repo, err := repo_service.ForkRepository(ctx, ctx.Doer, user, opts)
 	if err != nil {
 		ctx.Data["Err_RepoName"] = true
 		switch {
 		case repo_model.IsErrReachLimitOfRepo(err):
-			maxCreationLimit := ctxUser.MaxCreationLimit()
+			maxCreationLimit := user.MaxCreationLimit()
 			msg := ctx.TrN(maxCreationLimit, "repo.form.reach_limit_of_creation_1", "repo.form.reach_limit_of_creation_n", maxCreationLimit)
-			ctx.RenderWithErr(msg, tplFork, &form)
+			ctx.RenderWithErr(msg, tpl, &form)
 		case repo_model.IsErrRepoAlreadyExist(err):
-			ctx.RenderWithErr(ctx.Tr("repo.settings.new_owner_has_same_repo"), tplFork, &form)
+			ctx.RenderWithErr(ctx.Tr("repo.settings.new_owner_has_same_repo"), tpl, &form)
 		case repo_model.IsErrRepoFilesAlreadyExist(err):
 			switch {
 			case ctx.IsUserSiteAdmin() || (setting.Repository.AllowAdoptionOfUnadoptedRepositories && setting.Repository.AllowDeleteOfUnadoptedRepositories):
-				ctx.RenderWithErr(ctx.Tr("form.repository_files_already_exist.adopt_or_delete"), tplFork, form)
+				ctx.RenderWithErr(ctx.Tr("form.repository_files_already_exist.adopt_or_delete"), tpl, form)
 			case setting.Repository.AllowAdoptionOfUnadoptedRepositories:
-				ctx.RenderWithErr(ctx.Tr("form.repository_files_already_exist.adopt"), tplFork, form)
+				ctx.RenderWithErr(ctx.Tr("form.repository_files_already_exist.adopt"), tpl, form)
 			case setting.Repository.AllowDeleteOfUnadoptedRepositories:
-				ctx.RenderWithErr(ctx.Tr("form.repository_files_already_exist.delete"), tplFork, form)
+				ctx.RenderWithErr(ctx.Tr("form.repository_files_already_exist.delete"), tpl, form)
 			default:
-				ctx.RenderWithErr(ctx.Tr("form.repository_files_already_exist"), tplFork, form)
+				ctx.RenderWithErr(ctx.Tr("form.repository_files_already_exist"), tpl, form)
 			}
 		case db.IsErrNameReserved(err):
-			ctx.RenderWithErr(ctx.Tr("repo.form.name_reserved", err.(db.ErrNameReserved).Name), tplFork, &form)
+			ctx.RenderWithErr(ctx.Tr("repo.form.name_reserved", err.(db.ErrNameReserved).Name), tpl, &form)
 		case db.IsErrNamePatternNotAllowed(err):
-			ctx.RenderWithErr(ctx.Tr("repo.form.name_pattern_not_allowed", err.(db.ErrNamePatternNotAllowed).Pattern), tplFork, &form)
+			ctx.RenderWithErr(ctx.Tr("repo.form.name_pattern_not_allowed", err.(db.ErrNamePatternNotAllowed).Pattern), tpl, &form)
 		case errors.Is(err, user_model.ErrBlockedUser):
-			ctx.RenderWithErr(ctx.Tr("repo.fork.blocked_user"), tplFork, form)
+			ctx.RenderWithErr(ctx.Tr("repo.fork.blocked_user"), tpl, form)
 		default:
 			ctx.ServerError("ForkPost", err)
 		}
-		return
+		return repo, err
 	}
 
-	log.Trace("Repository forked[%d]: %s/%s", forkRepo.ID, ctxUser.Name, repo.Name)
-	ctx.Redirect(ctxUser.HomeLink() + "/" + url.PathEscape(repo.Name))
+	log.Trace("Repository forked[%d]: %s/%s", opts.BaseRepo.ID, user.Name, repo.Name)
+	return repo, err
 }
