@@ -62,13 +62,13 @@ func renderCommitRights(ctx *context.Context, editRepo *repo_model.Repository) b
 		ctx.Data["CanCreatePullRequest"] = ctx.Repo.Repository.UnitEnabled(ctx, unit.TypePullRequests) || canCreateBasePullRequest(ctx, editRepo)
 
 		return canCommitToBranch.CanCommitToBranch
-	} else {
-		// Editing a user fork of the repository we are viewing
-		ctx.Data["CanCommitToBranch"] = context.CanCommitToBranchResults{}
-		ctx.Data["CanCreatePullRequest"] = canCreateBasePullRequest(ctx, editRepo)
-
-		return false
 	}
+
+	// Editing a user fork of the repository we are viewing
+	ctx.Data["CanCommitToBranch"] = context.CanCommitToBranchResults{}
+	ctx.Data["CanCreatePullRequest"] = canCreateBasePullRequest(ctx, editRepo)
+
+	return false
 }
 
 // redirectForCommitChoice redirects after committing the edit to a branch
@@ -150,7 +150,13 @@ func editFileCommon(ctx *context.Context, isNewFile bool) (*repo_model.Repositor
 			return nil, ctx.Tr("repo.editor.fork_internal_error", userRepo.FullName())
 		}
 
-		// Check permissions, code unit and archiving
+		// Check code unit, archiving and permissions.
+		if !userRepo.UnitEnabled(ctx, unit.TypeCode) {
+			return nil, ctx.Tr("repo.editor.fork_code_disabled", userRepo.FullName())
+		}
+		if userRepo.IsArchived {
+			return nil, ctx.Tr("repo.editor.fork_is_archived", userRepo.FullName())
+		}
 		permission, err := access_model.GetUserRepoPermission(ctx, userRepo, ctx.Doer)
 		if err != nil {
 			log.Error("access_model.GetUserRepoPermission: %v", err)
@@ -158,12 +164,6 @@ func editFileCommon(ctx *context.Context, isNewFile bool) (*repo_model.Repositor
 		}
 		if !permission.CanWrite(unit.TypeCode) {
 			return nil, ctx.Tr("repo.editor.fork_no_permission", userRepo.FullName())
-		}
-		if !userRepo.UnitEnabled(ctx, unit.TypeCode) {
-			return nil, ctx.Tr("repo.editor.fork_code_disabled", userRepo.FullName())
-		}
-		if userRepo.IsArchived {
-			return nil, ctx.Tr("repo.editor.fork_is_archived", userRepo.FullName())
 		}
 
 		editRepo = userRepo
@@ -208,7 +208,7 @@ func forkToEditFilePost(ctx *context.Context, form forms.ForkToEditRepoFileForm)
 
 	// Fork repository, if it doesn't already exist
 	if editRepo == nil && notEditableMessage == nil {
-		newRepo, err := ForkRepository(ctx, ctx.Doer, repo_service.ForkRepoOptions{
+		_, err := ForkRepository(ctx, ctx.Doer, repo_service.ForkRepoOptions{
 			BaseRepo:     ctx.Repo.Repository,
 			Name:         GetUniqueRepositoryName(ctx, ctx.Repo.Repository.Name),
 			Description:  ctx.Repo.Repository.Description,
@@ -219,8 +219,6 @@ func forkToEditFilePost(ctx *context.Context, form forms.ForkToEditRepoFileForm)
 			ctx.HTML(http.StatusOK, tplForkFile)
 			return
 		}
-
-		editRepo = newRepo
 	}
 
 	// Redirect back to editing page
@@ -354,15 +352,11 @@ func pushBranchToUserRepo(ctx *context.Context, userRepo *repo_model.Repository,
 
 	log.Trace("pushBranchToUserRepo: pushing branch to user repo for editing: %s:%s %s:%s", baseRepo.FullName(), baseBranchName, userRepo.FullName(), userBranchName)
 
-	if err := git.Push(ctx, baseRepo.RepoPath(), git.PushOptions{
+	return git.Push(ctx, baseRepo.RepoPath(), git.PushOptions{
 		Remote: userRepo.RepoPath(),
 		Branch: baseBranchName + ":" + userBranchName,
 		Env:    repo_module.PushingEnvironment(ctx.Doer, userRepo),
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	})
 }
 
 func editFilePost(ctx *context.Context, form forms.EditRepoFileForm, isNewFile bool) {
@@ -435,6 +429,7 @@ func editFilePost(ctx *context.Context, form forms.EditRepoFileForm, isNewFile b
 		operation = "create"
 	}
 
+	oldBranchName := ctx.Repo.BranchName
 	if editRepo != ctx.Repo.Repository {
 		// If editing a user fork, first push the branch to that repository
 		err := pushBranchToUserRepo(ctx, editRepo, branchName)
@@ -442,11 +437,12 @@ func editFilePost(ctx *context.Context, form forms.EditRepoFileForm, isNewFile b
 			ctx.RenderWithErr(ctx.Tr("repo.editor.fork_failed_to_push_branch", branchName), tplEditFile, &form)
 			return
 		}
+		oldBranchName = branchName
 	}
 
 	if _, err := files_service.ChangeRepoFiles(ctx, editRepo, ctx.Doer, &files_service.ChangeRepoFilesOptions{
 		LastCommitID: form.LastCommit,
-		OldBranch:    branchName,
+		OldBranch:    oldBranchName,
 		NewBranch:    branchName,
 		Message:      message,
 		Files: []*files_service.ChangeRepoFile{
