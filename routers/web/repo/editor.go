@@ -80,13 +80,11 @@ func redirectForCommitChoice(ctx *context.Context, editRepo *repo_model.Reposito
 		baseBranch := ctx.Repo.BranchName
 		headBranch := newBranchName
 		if canCreateBasePullRequest(ctx, repo) {
-			log.Error("Can create base!")
 			redirectToPullRequest = true
 			baseBranch = repo.BaseRepo.DefaultBranch
 			headBranch = repo.Owner.Name + "/" + repo.Name + ":" + headBranch
 			repo = repo.BaseRepo
 		} else if repo.UnitEnabled(ctx, unit.TypePullRequests) {
-			log.Error("Fallback!")
 			redirectToPullRequest = true
 		}
 
@@ -119,75 +117,160 @@ func getParentTreeFields(treePath string) (treeNames, treePaths []string) {
 	return treeNames, treePaths
 }
 
-// editFileCommon setup common context, and return repository that will be edited.
-// If no repository can be found for editing, nil is returned along with a message
-// explaining why editing is not possible.
-func editFileCommon(ctx *context.Context, isNewFile bool) (*repo_model.Repository, any) {
-	editRepo := ctx.Repo.Repository
-
-	if !ctx.Repo.CanWriteToBranch(ctx, ctx.Doer, ctx.Repo.BranchName) {
-		// If we can't write to the branch, try find a user fork to create a branch in instead
-		userRepo, err := repo_model.GetUserFork(ctx, ctx.Repo.Repository.ID, ctx.Doer.ID)
-		if err != nil {
-			log.Error("GetUserFork: %v", err)
-			return nil, nil
-		}
-		if userRepo == nil {
-			return nil, nil
-		}
-
-		// Load repository information
-		if err := userRepo.LoadOwner(ctx); err != nil {
-			log.Error("LoadOwner: %v", err)
-			return nil, ctx.Tr("repo.editor.fork_internal_error", userRepo.FullName())
-		}
-		if err := userRepo.GetBaseRepo(ctx); err != nil || userRepo.BaseRepo == nil {
-			if err != nil {
-				log.Error("GetBaseRepo: %v", err)
-			} else {
-				log.Error("GetBaseRepo: Expected a base repo for user fork", err)
-			}
-			return nil, ctx.Tr("repo.editor.fork_internal_error", userRepo.FullName())
-		}
-
-		// Check code unit, archiving and permissions.
-		if !userRepo.UnitEnabled(ctx, unit.TypeCode) {
-			return nil, ctx.Tr("repo.editor.fork_code_disabled", userRepo.FullName())
-		}
-		if userRepo.IsArchived {
-			return nil, ctx.Tr("repo.editor.fork_is_archived", userRepo.FullName())
-		}
-		permission, err := access_model.GetUserRepoPermission(ctx, userRepo, ctx.Doer)
-		if err != nil {
-			log.Error("access_model.GetUserRepoPermission: %v", err)
-			return nil, ctx.Tr("repo.editor.fork_internal_error", userRepo.FullName())
-		}
-		if !permission.CanWrite(unit.TypeCode) {
-			return nil, ctx.Tr("repo.editor.fork_no_permission", userRepo.FullName())
-		}
-
-		editRepo = userRepo
-		ctx.Data["ForkRepo"] = userRepo
+// getEditRepository returns the repository where the actual edits will be written to.
+// This may be a fork of the repository owned by the user. If no repository can be found
+// for editing, nil is returned along with a message explaining why editing is not possible.
+func getEditRepository(ctx *context.Context) (*repo_model.Repository, any) {
+	if ctx.Repo.CanWriteToBranch(ctx, ctx.Doer, ctx.Repo.BranchName) {
+		return ctx.Repo.Repository, nil
 	}
 
-	ctx.Data["PageIsEdit"] = true
-	ctx.Data["IsNewFile"] = isNewFile
-	ctx.Data["BranchLink"] = ctx.Repo.RepoLink + "/src/" + ctx.Repo.RefTypeNameSubURL()
-	ctx.Data["PreviewableExtensions"] = strings.Join(markup.PreviewableExtensions(), ",")
-	ctx.Data["LineWrapExtensions"] = strings.Join(setting.Repository.Editor.LineWrapExtensions, ",")
-	ctx.Data["IsEditingFileOnly"] = ctx.FormString("return_uri") != ""
-	ctx.Data["ReturnURI"] = ctx.FormString("return_uri")
+	// If we can't write to the branch, try find a user fork to create a branch in instead
+	userRepo, err := repo_model.GetUserFork(ctx, ctx.Repo.Repository.ID, ctx.Doer.ID)
+	if err != nil {
+		log.Error("GetUserFork: %v", err)
+		return nil, nil
+	}
+	if userRepo == nil {
+		return nil, nil
+	}
 
-	return editRepo, ""
+	// Load repository information
+	if err := userRepo.LoadOwner(ctx); err != nil {
+		log.Error("LoadOwner: %v", err)
+		return nil, ctx.Tr("repo.editor.fork_internal_error", userRepo.FullName())
+	}
+	if err := userRepo.GetBaseRepo(ctx); err != nil || userRepo.BaseRepo == nil {
+		if err != nil {
+			log.Error("GetBaseRepo: %v", err)
+		} else {
+			log.Error("GetBaseRepo: Expected a base repo for user fork", err)
+		}
+		return nil, ctx.Tr("repo.editor.fork_internal_error", userRepo.FullName())
+	}
+
+	// Check code unit, archiving and permissions.
+	if !userRepo.UnitEnabled(ctx, unit.TypeCode) {
+		return nil, ctx.Tr("repo.editor.fork_code_disabled", userRepo.FullName())
+	}
+	if userRepo.IsArchived {
+		return nil, ctx.Tr("repo.editor.fork_is_archived", userRepo.FullName())
+	}
+	permission, err := access_model.GetUserRepoPermission(ctx, userRepo, ctx.Doer)
+	if err != nil {
+		log.Error("access_model.GetUserRepoPermission: %v", err)
+		return nil, ctx.Tr("repo.editor.fork_internal_error", userRepo.FullName())
+	}
+	if !permission.CanWrite(unit.TypeCode) {
+		return nil, ctx.Tr("repo.editor.fork_no_permission", userRepo.FullName())
+	}
+
+	ctx.Data["ForkRepo"] = userRepo
+	return userRepo, nil
 }
 
-func forkToEditFileCommon(ctx *context.Context, treePath string, notEditableMessage any) {
+// GetEditRepository returns the repository where the edits will be written to.
+// If no repository is editable, redirects to a page to create a fork.
+func GetEditRepositoryOrFork(ctx *context.Context, editOperation string) *repo_model.Repository {
+	editRepo, notEditableMessage := getEditRepository(ctx)
+	if editRepo != nil {
+		return editRepo
+	}
+
+	// No editable repository, suggest to create a fork
+	forkToEditFileCommon(ctx, ctx.Repo.TreePath, editOperation, notEditableMessage)
+	ctx.HTML(http.StatusOK, tplForkFile)
+	return nil
+}
+
+// GetEditRepository returns the repository where the edits will be written to.
+// If no repository is editable, display an error.
+func GetEditRepositoryOrError(ctx *context.Context, tpl templates.TplName, form any) *repo_model.Repository {
+	editRepo, _ := getEditRepository(ctx)
+	if editRepo == nil {
+		// No editable repo, maybe the fork was deleted in the meantime
+		ctx.RenderWithErr(ctx.Tr("repo.editor.cannot_find_editable_repo"), tpl, form)
+		return nil
+	}
+	return editRepo
+}
+
+// CheckPushEditBranch chesk if pushing to the branch in the edit repository is possible,
+// and if not renders an error and returns false.
+func CheckCanPushEditBranch(ctx *context.Context, editRepo *repo_model.Repository, branchName string, canCommit bool, tpl templates.TplName, form any) bool {
+	if ctx.Repo.Repository != editRepo || ctx.Repo.BranchName != branchName {
+		// When pushing to a fork or another branch on the same repository, it should not exist yet
+		if exist, err := git_model.IsBranchExist(ctx, editRepo.ID, branchName); err == nil && exist {
+			ctx.Data["Err_NewBranchName"] = true
+			ctx.RenderWithErr(ctx.Tr("repo.editor.branch_already_exists", branchName), tpl, form)
+			return false
+		}
+	} else if ctx.Repo.Repository == editRepo && !canCommit {
+		// When we can't commit to the same branch on the same repository, it's protected
+		ctx.Data["Err_NewBranchName"] = true
+		ctx.Data["commit_choice"] = frmCommitChoiceNewBranch
+		ctx.RenderWithErr(ctx.Tr("repo.editor.cannot_commit_to_protected_branch", branchName), tpl, form)
+		return false
+	}
+
+	return true
+}
+
+// PushEditBranchOrError pushes the branch that editing will be applied on top of
+// to the user fork, if needed. On failure, it displays and returns an error. The
+// branch name to be used for editing is returned.
+func PushEditBranchOrError(ctx *context.Context, editRepo *repo_model.Repository, branchName string, tpl templates.TplName, form any) (string, error) {
+	if editRepo == ctx.Repo.Repository {
+		return ctx.Repo.BranchName, nil
+	}
+
+	// If editing a user fork, first push the branch to that repository
+	baseRepo := ctx.Repo.Repository
+	baseBranchName := ctx.Repo.BranchName
+
+	log.Trace("pushBranchToUserRepo: pushing branch to user repo for editing: %s:%s %s:%s", baseRepo.FullName(), baseBranchName, editRepo.FullName(), branchName)
+
+	if err := git.Push(ctx, baseRepo.RepoPath(), git.PushOptions{
+		Remote: editRepo.RepoPath(),
+		Branch: baseBranchName + ":" + branchName,
+		Env:    repo_module.PushingEnvironment(ctx.Doer, editRepo),
+	}); err != nil {
+		ctx.RenderWithErr(ctx.Tr("repo.editor.fork_failed_to_push_branch", branchName), tpl, form)
+		return "", nil
+	}
+
+	return branchName, nil
+}
+
+// UpdateEditRepositoryIsEmpty updates the the edit repository to mark it as no longer empty
+func UpdateEditRepositoryIsEmpty(ctx *context.Context, editRepo *repo_model.Repository) {
+	if !editRepo.IsEmpty {
+		return
+	}
+
+	editGitRepo, err := gitrepo.OpenRepository(git.DefaultContext, editRepo)
+	if err != nil {
+		log.Error("gitrepo.OpenRepository: %v", err)
+		return
+	}
+	if editGitRepo == nil {
+		return
+	}
+
+	if isEmpty, err := editGitRepo.IsEmpty(); err == nil && !isEmpty {
+		_ = repo_model.UpdateRepositoryCols(ctx, &repo_model.Repository{ID: editRepo.ID, IsEmpty: false}, "is_empty")
+	}
+	editGitRepo.Close()
+}
+
+func forkToEditFileCommon(ctx *context.Context, editOperation, treePath string, notEditableMessage any) {
 	// Check if the filename (and additional path) is specified in the querystring
 	// (filename is a misnomer, but kept for compatibility with GitHub)
 	filePath, _ := path.Split(ctx.Req.URL.Query().Get("filename"))
 	filePath = strings.Trim(filePath, "/")
 	treeNames, treePaths := getParentTreeFields(path.Join(ctx.Repo.TreePath, filePath))
 
+	ctx.Data["EditOperation"] = editOperation
 	ctx.Data["TreePath"] = treePath
 	ctx.Data["TreeNames"] = treeNames
 	ctx.Data["TreePaths"] = treePaths
@@ -195,14 +278,10 @@ func forkToEditFileCommon(ctx *context.Context, treePath string, notEditableMess
 	ctx.Data["NotEditableMessage"] = notEditableMessage
 }
 
-func forkToEditFile(ctx *context.Context, notEditableMessage any) {
-	// Suggest to create a new user fork
-	forkToEditFileCommon(ctx, ctx.Repo.TreePath, notEditableMessage)
-	ctx.HTML(http.StatusOK, tplForkFile)
-}
+func ForkToEditFilePost(ctx *context.Context) {
+	form := web.GetForm(ctx).(*forms.ForkToEditRepoFileForm)
 
-func forkToEditFilePost(ctx *context.Context, form forms.ForkToEditRepoFileForm) {
-	editRepo, notEditableMessage := editFileCommon(ctx, false)
+	editRepo, notEditableMessage := getEditRepository(ctx)
 
 	ctx.Data["PageHasPosted"] = true
 
@@ -215,28 +294,36 @@ func forkToEditFilePost(ctx *context.Context, form forms.ForkToEditRepoFileForm)
 			SingleBranch: ctx.Repo.BranchName,
 		}, tplForkFile, form)
 		if err != nil {
-			forkToEditFileCommon(ctx, form.TreePath, notEditableMessage)
+			forkToEditFileCommon(ctx, form.TreePath, form.EditOperation, notEditableMessage)
 			ctx.HTML(http.StatusOK, tplForkFile)
 			return
 		}
 	}
 
 	// Redirect back to editing page
-	ctx.Redirect(path.Join(ctx.Repo.RepoLink, "_edit", util.PathEscapeSegments(ctx.Repo.BranchName), util.PathEscapeSegments(form.TreePath)))
+	ctx.Redirect(path.Join(ctx.Repo.RepoLink, form.EditOperation, util.PathEscapeSegments(ctx.Repo.BranchName), util.PathEscapeSegments(form.TreePath)))
 }
 
-func ForkToEditFilePost(ctx *context.Context) {
-	form := web.GetForm(ctx).(*forms.ForkToEditRepoFileForm)
-	forkToEditFilePost(ctx, *form)
+// editFileCommon setup common context, and return repository that will be edited.
+// If no repository can be found for editing, nil is returned along with a message
+// explaining why editing is not possible.
+func editFileCommon(ctx *context.Context, isNewFile bool) {
+	ctx.Data["PageIsEdit"] = true
+	ctx.Data["IsNewFile"] = isNewFile
+	ctx.Data["BranchLink"] = ctx.Repo.RepoLink + "/src/" + ctx.Repo.RefTypeNameSubURL()
+	ctx.Data["PreviewableExtensions"] = strings.Join(markup.PreviewableExtensions(), ",")
+	ctx.Data["LineWrapExtensions"] = strings.Join(setting.Repository.Editor.LineWrapExtensions, ",")
+	ctx.Data["IsEditingFileOnly"] = ctx.FormString("return_uri") != ""
+	ctx.Data["ReturnURI"] = ctx.FormString("return_uri")
 }
 
 func editFile(ctx *context.Context, isNewFile bool) {
-	editRepo, notEditableMessage := editFileCommon(ctx, isNewFile)
+	editRepo := GetEditRepositoryOrFork(ctx, util.Iif(isNewFile, "_new", "_edit"))
 	if editRepo == nil {
-		// No editable repository, suggest to create a fork
-		forkToEditFile(ctx, notEditableMessage)
 		return
 	}
+
+	editFileCommon(ctx, isNewFile)
 
 	canCommit := renderCommitRights(ctx, editRepo)
 
@@ -345,22 +432,8 @@ func NewFile(ctx *context.Context) {
 	editFile(ctx, true)
 }
 
-// Push branch to user fork, to apply changes on top of
-func pushBranchToUserRepo(ctx *context.Context, userRepo *repo_model.Repository, userBranchName string) (err error) {
-	baseRepo := ctx.Repo.Repository
-	baseBranchName := ctx.Repo.BranchName
-
-	log.Trace("pushBranchToUserRepo: pushing branch to user repo for editing: %s:%s %s:%s", baseRepo.FullName(), baseBranchName, userRepo.FullName(), userBranchName)
-
-	return git.Push(ctx, baseRepo.RepoPath(), git.PushOptions{
-		Remote: userRepo.RepoPath(),
-		Branch: baseBranchName + ":" + userBranchName,
-		Env:    repo_module.PushingEnvironment(ctx.Doer, userRepo),
-	})
-}
-
 func editFilePost(ctx *context.Context, form forms.EditRepoFileForm, isNewFile bool) {
-	editRepo, _ := editFileCommon(ctx, isNewFile)
+	editFileCommon(ctx, isNewFile)
 
 	ctx.Data["PageHasPosted"] = true
 
@@ -386,19 +459,15 @@ func editFilePost(ctx *context.Context, form forms.EditRepoFileForm, isNewFile b
 		return
 	}
 
+	editRepo := GetEditRepositoryOrError(ctx, tplEditFile, &form)
 	if editRepo == nil {
-		// No editable repo, maybe the fork was deleted in the meantime
-		ctx.RenderWithErr(ctx.Tr("repo.editor.cannot_find_editable_repo"), tplEditFile, &form)
 		return
 	}
 
 	canCommit := renderCommitRights(ctx, editRepo)
 
 	// Cannot commit to an existing branch if user doesn't have rights
-	if editRepo == ctx.Repo.Repository && branchName == ctx.Repo.BranchName && !canCommit {
-		ctx.Data["Err_NewBranchName"] = true
-		ctx.Data["commit_choice"] = frmCommitChoiceNewBranch
-		ctx.RenderWithErr(ctx.Tr("repo.editor.cannot_commit_to_protected_branch", branchName), tplEditFile, &form)
+	if !CheckCanPushEditBranch(ctx, editRepo, branchName, canCommit, tplEditFile, &form) {
 		return
 	}
 
@@ -429,20 +498,14 @@ func editFilePost(ctx *context.Context, form forms.EditRepoFileForm, isNewFile b
 		operation = "create"
 	}
 
-	oldBranchName := ctx.Repo.BranchName
-	if editRepo != ctx.Repo.Repository {
-		// If editing a user fork, first push the branch to that repository
-		err := pushBranchToUserRepo(ctx, editRepo, branchName)
-		if err != nil {
-			ctx.RenderWithErr(ctx.Tr("repo.editor.fork_failed_to_push_branch", branchName), tplEditFile, &form)
-			return
-		}
-		oldBranchName = branchName
+	editBranchName, err := PushEditBranchOrError(ctx, editRepo, branchName, tplEditFile, &form)
+	if err != nil {
+		return
 	}
 
 	if _, err := files_service.ChangeRepoFiles(ctx, editRepo, ctx.Doer, &files_service.ChangeRepoFilesOptions{
 		LastCommitID: form.LastCommit,
-		OldBranch:    oldBranchName,
+		OldBranch:    editBranchName,
 		NewBranch:    branchName,
 		Message:      message,
 		Files: []*files_service.ChangeRepoFile{
@@ -534,19 +597,7 @@ func editFilePost(ctx *context.Context, form forms.EditRepoFileForm, isNewFile b
 		}
 	}
 
-	if editRepo.IsEmpty {
-		editGitRepo, err := gitrepo.OpenRepository(git.DefaultContext, editRepo)
-		if err != nil {
-			log.Error("gitrepo.OpenRepository: %v", err)
-		} else {
-			if editGitRepo != nil {
-				if isEmpty, err := editGitRepo.IsEmpty(); err == nil && !isEmpty {
-					_ = repo_model.UpdateRepositoryCols(ctx, &repo_model.Repository{ID: editRepo.ID, IsEmpty: false}, "is_empty")
-				}
-			}
-			editGitRepo.Close()
-		}
-	}
+	UpdateEditRepositoryIsEmpty(ctx, editRepo)
 
 	redirectForCommitChoice(ctx, editRepo, form.CommitChoice, branchName, form.TreePath)
 }
@@ -596,6 +647,11 @@ func DiffPreviewPost(ctx *context.Context) {
 
 // DeleteFile render delete file page
 func DeleteFile(ctx *context.Context) {
+	editRepo := GetEditRepositoryOrFork(ctx, "_delete")
+	if editRepo == nil {
+		return
+	}
+
 	ctx.Data["PageIsDelete"] = true
 	ctx.Data["BranchLink"] = ctx.Repo.RepoLink + "/src/" + ctx.Repo.RefTypeNameSubURL()
 	treePath := cleanUploadFileName(ctx.Repo.TreePath)
@@ -606,7 +662,7 @@ func DeleteFile(ctx *context.Context) {
 	}
 
 	ctx.Data["TreePath"] = treePath
-	canCommit := renderCommitRights(ctx, ctx.Repo.Repository)
+	canCommit := renderCommitRights(ctx, editRepo)
 
 	ctx.Data["commit_summary"] = ""
 	ctx.Data["commit_message"] = ""
@@ -616,7 +672,7 @@ func DeleteFile(ctx *context.Context) {
 	} else {
 		ctx.Data["commit_choice"] = frmCommitChoiceNewBranch
 	}
-	ctx.Data["new_branch_name"] = GetUniquePatchBranchName(ctx, ctx.Repo.Repository)
+	ctx.Data["new_branch_name"] = GetUniquePatchBranchName(ctx, editRepo)
 
 	ctx.HTML(http.StatusOK, tplDeleteFile)
 }
@@ -624,7 +680,6 @@ func DeleteFile(ctx *context.Context) {
 // DeleteFilePost response for deleting file
 func DeleteFilePost(ctx *context.Context) {
 	form := web.GetForm(ctx).(*forms.DeleteRepoFileForm)
-	canCommit := renderCommitRights(ctx, ctx.Repo.Repository)
 	branchName := ctx.Repo.BranchName
 	if form.CommitChoice == frmCommitChoiceNewBranch {
 		branchName = form.NewBranchName
@@ -644,10 +699,15 @@ func DeleteFilePost(ctx *context.Context) {
 		return
 	}
 
-	if branchName == ctx.Repo.BranchName && !canCommit {
-		ctx.Data["Err_NewBranchName"] = true
-		ctx.Data["commit_choice"] = frmCommitChoiceNewBranch
-		ctx.RenderWithErr(ctx.Tr("repo.editor.cannot_commit_to_protected_branch", branchName), tplDeleteFile, &form)
+	editRepo := GetEditRepositoryOrError(ctx, tplDeleteFile, &form)
+	if editRepo == nil {
+		return
+	}
+
+	canCommit := renderCommitRights(ctx, editRepo)
+
+	// Cannot commit to an existing branch if user doesn't have rights
+	if !CheckCanPushEditBranch(ctx, editRepo, branchName, canCommit, tplDeleteFile, &form) {
 		return
 	}
 
@@ -667,9 +727,14 @@ func DeleteFilePost(ctx *context.Context) {
 		return
 	}
 
-	if _, err := files_service.ChangeRepoFiles(ctx, ctx.Repo.Repository, ctx.Doer, &files_service.ChangeRepoFilesOptions{
+	editBranchName, err := PushEditBranchOrError(ctx, editRepo, branchName, tplDeleteFile, &form)
+	if err != nil {
+		return
+	}
+
+	if _, err := files_service.ChangeRepoFiles(ctx, editRepo, ctx.Doer, &files_service.ChangeRepoFilesOptions{
 		LastCommitID: form.LastCommit,
-		OldBranch:    ctx.Repo.BranchName,
+		OldBranch:    editBranchName,
 		NewBranch:    branchName,
 		Files: []*files_service.ChangeRepoFile{
 			{
@@ -759,14 +824,19 @@ func DeleteFilePost(ctx *context.Context) {
 		}
 	}
 
-	redirectForCommitChoice(ctx, ctx.Repo.Repository, form.CommitChoice, branchName, treePath)
+	redirectForCommitChoice(ctx, editRepo, form.CommitChoice, branchName, treePath)
 }
 
 // UploadFile render upload file page
 func UploadFile(ctx *context.Context) {
+	editRepo := GetEditRepositoryOrFork(ctx, "_upload")
+	if editRepo == nil {
+		return
+	}
+
 	ctx.Data["PageIsUpload"] = true
 	upload.AddUploadContext(ctx, "repo")
-	canCommit := renderCommitRights(ctx, ctx.Repo.Repository)
+	canCommit := renderCommitRights(ctx, editRepo)
 	treePath := cleanUploadFileName(ctx.Repo.TreePath)
 	if treePath != ctx.Repo.TreePath {
 		ctx.Redirect(path.Join(ctx.Repo.RepoLink, "_upload", util.PathEscapeSegments(ctx.Repo.BranchName), util.PathEscapeSegments(treePath)))
@@ -790,7 +860,7 @@ func UploadFile(ctx *context.Context) {
 	} else {
 		ctx.Data["commit_choice"] = frmCommitChoiceNewBranch
 	}
-	ctx.Data["new_branch_name"] = GetUniquePatchBranchName(ctx, ctx.Repo.Repository)
+	ctx.Data["new_branch_name"] = GetUniquePatchBranchName(ctx, editRepo)
 
 	ctx.HTML(http.StatusOK, tplUploadFile)
 }
@@ -800,11 +870,8 @@ func UploadFilePost(ctx *context.Context) {
 	form := web.GetForm(ctx).(*forms.UploadRepoFileForm)
 	ctx.Data["PageIsUpload"] = true
 	upload.AddUploadContext(ctx, "repo")
-	canCommit := renderCommitRights(ctx, ctx.Repo.Repository)
 
-	oldBranchName := ctx.Repo.BranchName
-	branchName := oldBranchName
-
+	branchName := ctx.Repo.BranchName
 	if form.CommitChoice == frmCommitChoiceNewBranch {
 		branchName = form.NewBranchName
 	}
@@ -831,16 +898,14 @@ func UploadFilePost(ctx *context.Context) {
 		return
 	}
 
-	if oldBranchName != branchName {
-		if exist, err := git_model.IsBranchExist(ctx, ctx.Repo.Repository.ID, branchName); err == nil && exist {
-			ctx.Data["Err_NewBranchName"] = true
-			ctx.RenderWithErr(ctx.Tr("repo.editor.branch_already_exists", branchName), tplUploadFile, &form)
-			return
-		}
-	} else if !canCommit {
-		ctx.Data["Err_NewBranchName"] = true
-		ctx.Data["commit_choice"] = frmCommitChoiceNewBranch
-		ctx.RenderWithErr(ctx.Tr("repo.editor.cannot_commit_to_protected_branch", branchName), tplUploadFile, &form)
+	editRepo := GetEditRepositoryOrError(ctx, tplUploadFile, &form)
+	if editRepo == nil {
+		return
+	}
+
+	canCommit := renderCommitRights(ctx, editRepo)
+
+	if !CheckCanPushEditBranch(ctx, editRepo, branchName, canCommit, tplUploadFile, &form) {
 		return
 	}
 
@@ -887,9 +952,14 @@ func UploadFilePost(ctx *context.Context) {
 		return
 	}
 
-	if err := files_service.UploadRepoFiles(ctx, ctx.Repo.Repository, ctx.Doer, &files_service.UploadRepoFileOptions{
+	editBranchName, err := PushEditBranchOrError(ctx, editRepo, branchName, tplUploadFile, &form)
+	if err != nil {
+		return
+	}
+
+	if err := files_service.UploadRepoFiles(ctx, editRepo, ctx.Doer, &files_service.UploadRepoFileOptions{
 		LastCommitID: ctx.Repo.CommitID,
-		OldBranch:    oldBranchName,
+		OldBranch:    editBranchName,
 		NewBranch:    branchName,
 		TreePath:     form.TreePath,
 		Message:      message,
@@ -948,19 +1018,15 @@ func UploadFilePost(ctx *context.Context) {
 			}
 		} else {
 			// os.ErrNotExist - upload file missing in the intervening time?!
-			log.Error("Error during upload to repo: %-v to filepath: %s on %s from %s: %v", ctx.Repo.Repository, form.TreePath, oldBranchName, form.NewBranchName, err)
+			log.Error("Error during upload to repo: %-v to filepath: %s on %s from %s: %v", editRepo, form.TreePath, editBranchName, form.NewBranchName, err)
 			ctx.RenderWithErr(ctx.Tr("repo.editor.unable_to_upload_files", form.TreePath, err), tplUploadFile, &form)
 		}
 		return
 	}
 
-	if ctx.Repo.Repository.IsEmpty {
-		if isEmpty, err := ctx.Repo.GitRepo.IsEmpty(); err == nil && !isEmpty {
-			_ = repo_model.UpdateRepositoryCols(ctx, &repo_model.Repository{ID: ctx.Repo.Repository.ID, IsEmpty: false}, "is_empty")
-		}
-	}
+	UpdateEditRepositoryIsEmpty(ctx, editRepo)
 
-	redirectForCommitChoice(ctx, ctx.Repo.Repository, form.CommitChoice, branchName, form.TreePath)
+	redirectForCommitChoice(ctx, editRepo, form.CommitChoice, branchName, form.TreePath)
 }
 
 func cleanUploadFileName(name string) string {
@@ -976,6 +1042,7 @@ func cleanUploadFileName(name string) string {
 }
 
 // UploadFileToServer upload file to server file dir not git
+// This is independent of any repository, no repository permissions are checked to call this.
 func UploadFileToServer(ctx *context.Context) {
 	file, header, err := ctx.Req.FormFile("file")
 	if err != nil {
@@ -1015,6 +1082,7 @@ func UploadFileToServer(ctx *context.Context) {
 }
 
 // RemoveUploadFileFromServer remove file from server file dir
+// This is independent of any repository, no repository permissions are checked to call this.
 func RemoveUploadFileFromServer(ctx *context.Context) {
 	form := web.GetForm(ctx).(*forms.RemoveUploadFileForm)
 	if len(form.File) == 0 {

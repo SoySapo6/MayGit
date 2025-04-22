@@ -213,7 +213,7 @@ func prepareToRenderReadmeFile(ctx *context.Context, subfolder string, readmeFil
 	}
 
 	if !fInfo.isLFSFile {
-		if ctx.Repo.CanEnableEditor(ctx, ctx.Doer) || !ctx.Repo.CanWriteToBranch(ctx, ctx.Doer, ctx.Repo.BranchName) {
+		if ctx.Repo.CanEnableEditor() {
 			ctx.Data["CanEditReadmeFile"] = true
 		}
 	}

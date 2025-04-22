@@ -735,7 +735,8 @@ func (f *EditPreviewDiffForm) Validate(req *http.Request, errs binding.Errors) b
 
 // ForkToEditRepoFileForm form for forking the repo to edit a file
 type ForkToEditRepoFileForm struct {
-	TreePath string `binding:"Required;MaxSize(500)"`
+	TreePath      string `binding:"Required;MaxSize(500)"`
+	EditOperation string `binding:"Required;MaxSize(20)"`
 }
 
 // Validate validates the fields

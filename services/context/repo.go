@@ -71,9 +71,10 @@ func (r *Repository) CanWriteToBranch(ctx context.Context, user *user_model.User
 	return issues_model.CanMaintainerWriteToBranch(ctx, r.Permission, branch, user)
 }
 
-// CanEnableEditor returns true if repository is editable and user has proper access level.
-func (r *Repository) CanEnableEditor(ctx context.Context, user *user_model.User) bool {
-	return r.RefFullName.IsBranch() && r.CanWriteToBranch(ctx, user, r.BranchName) && r.Repository.CanEnableEditor() && !r.Repository.IsArchived
+// CanEnableEditor returns true if the web editor can be enabled for this repository,
+// either by directly writing to the repository or to a user fork.
+func (r *Repository) CanEnableEditor() bool {
+	return r.RefFullName.IsBranch() && r.Repository.CanEnableEditor()
 }
 
 // CanCreateBranch returns true if repository is editable and user has proper access level.
@@ -94,10 +95,27 @@ func RepoMustNotBeArchived() func(ctx *Context) {
 	}
 }
 
+// MustEnableEditor checks if the web editor can be enabled for this repository
+func MustEnableEditor() func(ctx *Context) {
+	return func(ctx *Context) {
+		if !ctx.Repo.CanEnableEditor() {
+			ctx.NotFound(nil)
+		}
+	}
+}
+
+// MustBeAbleToUpload check that upload is enabled on this site and useful for editing
+func MustBeAbleToUpload() func(ctx *Context) {
+	return func(ctx *Context) {
+		if !setting.Repository.Upload.Enabled || !ctx.Repo.Repository.CanEnableEditor() {
+			ctx.NotFound(nil)
+		}
+	}
+}
+
 // CanCommitToBranchResults represents the results of CanCommitToBranch
 type CanCommitToBranchResults struct {
 	CanCommitToBranch bool
-	EditorEnabled     bool
 	UserCanPush       bool
 	RequireSigned     bool
 	WillSign          bool
@@ -123,7 +141,7 @@ func (r *Repository) CanCommitToBranch(ctx context.Context, doer *user_model.Use
 
 	sign, keyID, _, err := asymkey_service.SignCRUDAction(ctx, r.Repository.RepoPath(), doer, r.Repository.RepoPath(), git.BranchPrefix+r.BranchName)
 
-	canCommit := r.CanEnableEditor(ctx, doer) && userCanPush
+	canCommit := r.CanEnableEditor() && r.CanWriteToBranch(ctx, doer, r.BranchName) && userCanPush
 	if requireSigned {
 		canCommit = canCommit && sign
 	}
@@ -139,7 +157,6 @@ func (r *Repository) CanCommitToBranch(ctx context.Context, doer *user_model.Use
 
 	return CanCommitToBranchResults{
 		CanCommitToBranch: canCommit,
-		EditorEnabled:     r.CanEnableEditor(ctx, doer),
 		UserCanPush:       userCanPush,
 		RequireSigned:     requireSigned,
 		WillSign:          sign,
