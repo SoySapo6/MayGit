@@ -20,6 +20,7 @@ import (
 	user_model "code.gitea.io/gitea/models/user"
 	"code.gitea.io/gitea/modules/git"
 	"code.gitea.io/gitea/modules/json"
+	"code.gitea.io/gitea/modules/test"
 	"code.gitea.io/gitea/modules/translation"
 	"code.gitea.io/gitea/tests"
 
@@ -477,7 +478,8 @@ func forkToEdit(t *testing.T, session *TestSession, owner, repo, operation, bran
 			"edit_operation": operation,
 		},
 	)
-	session.MakeRequest(t, req, http.StatusSeeOther)
+	resp = session.MakeRequest(t, req, http.StatusSeeOther)
+	assert.Equal(t, "/"+path.Join(owner, repo, operation, branch, filePath), test.RedirectURL(resp))
 }
 
 func testForkToEdit(t *testing.T, session *TestSession, user, owner, repo, branch, filePath string) {

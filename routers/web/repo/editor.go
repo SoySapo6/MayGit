@@ -178,7 +178,7 @@ func GetEditRepositoryOrFork(ctx *context.Context, editOperation string) *repo_m
 	}
 
 	// No editable repository, suggest to create a fork
-	forkToEditFileCommon(ctx, ctx.Repo.TreePath, editOperation, notEditableMessage)
+	forkToEditFileCommon(ctx, editOperation, ctx.Repo.TreePath, notEditableMessage)
 	ctx.HTML(http.StatusOK, tplForkFile)
 	return nil
 }
@@ -299,7 +299,7 @@ func ForkToEditFilePost(ctx *context.Context) {
 			SingleBranch: ctx.Repo.BranchName,
 		}, tplForkFile, form)
 		if err != nil {
-			forkToEditFileCommon(ctx, form.TreePath, form.EditOperation, notEditableMessage)
+			forkToEditFileCommon(ctx, form.EditOperation, form.TreePath, notEditableMessage)
 			ctx.HTML(http.StatusOK, tplForkFile)
 			return
 		}
