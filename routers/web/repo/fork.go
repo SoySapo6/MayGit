@@ -125,11 +125,6 @@ func getForkRepository(ctx *context.Context) *repo_model.Repository {
 // Fork render repository fork page
 func Fork(ctx *context.Context) {
 	ctx.Data["Title"] = ctx.Tr("new_fork")
-
-	redirectTo := ctx.FormString("redirect_to_edit")
-	ctx.Data["ForkForEdit"] = len(redirectTo) > 0
-	ctx.Data["ForkRedirectTo"] = redirectTo
-
 	getForkRepository(ctx)
 	if ctx.Written() {
 		return
