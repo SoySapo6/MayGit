@@ -194,20 +194,20 @@ func ForkPost(ctx *context.Context) {
 		}
 	}
 
-	repo, err := ForkRepository(ctx, ctxUser, repo_service.ForkRepoOptions{
+	repo := forkRepositoryOrError(ctx, ctxUser, repo_service.ForkRepoOptions{
 		BaseRepo:     forkRepo,
 		Name:         form.RepoName,
 		Description:  form.Description,
 		SingleBranch: form.ForkSingleBranch,
 	}, tplFork, form)
-	if err != nil {
+	if repo == nil {
 		return
 	}
 
 	ctx.Redirect(ctxUser.HomeLink() + "/" + url.PathEscape(repo.Name))
 }
 
-func ForkRepository(ctx *context.Context, user *user_model.User, opts repo_service.ForkRepoOptions, tpl templates.TplName, form any) (*repo_model.Repository, error) {
+func forkRepositoryOrError(ctx *context.Context, user *user_model.User, opts repo_service.ForkRepoOptions, tpl templates.TplName, form any) *repo_model.Repository {
 	repo, err := repo_service.ForkRepository(ctx, ctx.Doer, user, opts)
 	if err != nil {
 		ctx.Data["Err_RepoName"] = true
@@ -238,9 +238,9 @@ func ForkRepository(ctx *context.Context, user *user_model.User, opts repo_servi
 		default:
 			ctx.ServerError("ForkPost", err)
 		}
-		return repo, err
+		return repo
 	}
 
 	log.Trace("Repository forked[%d]: %s/%s", opts.BaseRepo.ID, user.Name, repo.Name)
-	return repo, err
+	return repo
 }

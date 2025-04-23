@@ -24,7 +24,7 @@ const (
 
 // NewDiffPatch render create patch page
 func NewDiffPatch(ctx *context.Context) {
-	editRepo := GetEditRepositoryOrFork(ctx, "_diffpatch")
+	editRepo := getEditRepositoryOrFork(ctx, "_diffpatch")
 	if editRepo == nil {
 		return
 	}
@@ -71,7 +71,7 @@ func NewDiffPatchPost(ctx *context.Context) {
 		return
 	}
 
-	editRepo := GetEditRepositoryOrError(ctx, tplPatchFile, &form)
+	editRepo := getEditRepositoryOrError(ctx, tplPatchFile, &form)
 	if editRepo == nil {
 		return
 	}
@@ -79,7 +79,7 @@ func NewDiffPatchPost(ctx *context.Context) {
 	renderCommitRights(ctx, editRepo)
 
 	// Cannot commit to an existing branch if user doesn't have rights
-	if !CheckCanPushEditBranch(ctx, editRepo, branchName, tplPatchFile, &form) {
+	if !canPushToEditRepository(ctx, editRepo, branchName, tplPatchFile, &form) {
 		return
 	}
 
@@ -102,7 +102,7 @@ func NewDiffPatchPost(ctx *context.Context) {
 		return
 	}
 
-	editBranchName, err := PushEditBranchOrError(ctx, editRepo, branchName, tplPatchFile, &form)
+	editBranchName, err := pushToEditRepositoryOrError(ctx, editRepo, branchName, tplPatchFile, &form)
 	if err != nil {
 		return
 	}
