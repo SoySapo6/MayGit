@@ -53,7 +53,7 @@ func canCreateBasePullRequest(ctx *context.Context, editRepo *repo_model.Reposit
 func renderCommitRights(ctx *context.Context, editRepo *repo_model.Repository) bool {
 	if editRepo == ctx.Repo.Repository {
 		// Editing the same repository that we are viewing
-		canCommitToBranch, err := ctx.Repo.CanCommitToBranch(ctx, ctx.Doer)
+		canCommitToBranch, err := context.CanCommitToBranch(ctx, ctx.Doer, ctx.Repo.Repository, ctx.Repo.BranchName)
 		if err != nil {
 			log.Error("CanCommitToBranch: %v", err)
 		}
@@ -64,7 +64,7 @@ func renderCommitRights(ctx *context.Context, editRepo *repo_model.Repository) b
 		return canCommitToBranch.CanCommitToBranch
 	}
 
-	// Editing a user fork of the repository we are viewing
+	// Editing a user fork of the repository we are viewing, always choose a new branch
 	ctx.Data["CanCommitToBranch"] = context.CanCommitToBranchResults{}
 	ctx.Data["CanCreatePullRequest"] = canCreateBasePullRequest(ctx, editRepo)
 
@@ -121,7 +121,7 @@ func getParentTreeFields(treePath string) (treeNames, treePaths []string) {
 // This may be a fork of the repository owned by the user. If no repository can be found
 // for editing, nil is returned along with a message explaining why editing is not possible.
 func getEditRepository(ctx *context.Context) (*repo_model.Repository, any) {
-	if ctx.Repo.CanWriteToBranch(ctx, ctx.Doer, ctx.Repo.BranchName) {
+	if context.CanWriteToBranch(ctx, ctx.Doer, ctx.Repo.Repository, ctx.Repo.BranchName) {
 		return ctx.Repo.Repository, nil
 	}
 
@@ -197,18 +197,23 @@ func GetEditRepositoryOrError(ctx *context.Context, tpl templates.TplName, form 
 
 // CheckPushEditBranch chesk if pushing to the branch in the edit repository is possible,
 // and if not renders an error and returns false.
-func CheckCanPushEditBranch(ctx *context.Context, editRepo *repo_model.Repository, branchName string, canCommit bool, tpl templates.TplName, form any) bool {
+func CheckCanPushEditBranch(ctx *context.Context, editRepo *repo_model.Repository, branchName string, tpl templates.TplName, form any) bool {
+	// When pushing to a fork or another branch on the same repository, it should not exist yet
 	if ctx.Repo.Repository != editRepo || ctx.Repo.BranchName != branchName {
-		// When pushing to a fork or another branch on the same repository, it should not exist yet
 		if exist, err := git_model.IsBranchExist(ctx, editRepo.ID, branchName); err == nil && exist {
 			ctx.Data["Err_NewBranchName"] = true
 			ctx.RenderWithErr(ctx.Tr("repo.editor.branch_already_exists", branchName), tpl, form)
 			return false
 		}
-	} else if ctx.Repo.Repository == editRepo && !canCommit {
-		// When we can't commit to the same branch on the same repository, it's protected
+	}
+
+	// Check for protected branch
+	canCommitToBranch, err := context.CanCommitToBranch(ctx, ctx.Doer, editRepo, branchName)
+	if err != nil {
+		log.Error("CanCommitToBranch: %v", err)
+	}
+	if !canCommitToBranch.CanCommitToBranch {
 		ctx.Data["Err_NewBranchName"] = true
-		ctx.Data["commit_choice"] = frmCommitChoiceNewBranch
 		ctx.RenderWithErr(ctx.Tr("repo.editor.cannot_commit_to_protected_branch", branchName), tpl, form)
 		return false
 	}
@@ -464,10 +469,10 @@ func editFilePost(ctx *context.Context, form forms.EditRepoFileForm, isNewFile b
 		return
 	}
 
-	canCommit := renderCommitRights(ctx, editRepo)
+	renderCommitRights(ctx, editRepo)
 
 	// Cannot commit to an existing branch if user doesn't have rights
-	if !CheckCanPushEditBranch(ctx, editRepo, branchName, canCommit, tplEditFile, &form) {
+	if !CheckCanPushEditBranch(ctx, editRepo, branchName, tplEditFile, &form) {
 		return
 	}
 
@@ -704,10 +709,10 @@ func DeleteFilePost(ctx *context.Context) {
 		return
 	}
 
-	canCommit := renderCommitRights(ctx, editRepo)
+	renderCommitRights(ctx, editRepo)
 
 	// Cannot commit to an existing branch if user doesn't have rights
-	if !CheckCanPushEditBranch(ctx, editRepo, branchName, canCommit, tplDeleteFile, &form) {
+	if !CheckCanPushEditBranch(ctx, editRepo, branchName, tplDeleteFile, &form) {
 		return
 	}
 
@@ -903,9 +908,9 @@ func UploadFilePost(ctx *context.Context) {
 		return
 	}
 
-	canCommit := renderCommitRights(ctx, editRepo)
+	renderCommitRights(ctx, editRepo)
 
-	if !CheckCanPushEditBranch(ctx, editRepo, branchName, canCommit, tplUploadFile, &form) {
+	if !CheckCanPushEditBranch(ctx, editRepo, branchName, tplUploadFile, &form) {
 		return
 	}
 

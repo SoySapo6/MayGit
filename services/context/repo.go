@@ -67,8 +67,13 @@ type Repository struct {
 }
 
 // CanWriteToBranch checks if the branch is writable by the user
-func (r *Repository) CanWriteToBranch(ctx context.Context, user *user_model.User, branch string) bool {
-	return issues_model.CanMaintainerWriteToBranch(ctx, r.Permission, branch, user)
+func CanWriteToBranch(ctx context.Context, user *user_model.User, repo *repo_model.Repository, branch string) bool {
+	permission, err := access_model.GetUserRepoPermission(ctx, repo, user)
+	if err != nil {
+		return false
+	}
+
+	return issues_model.CanMaintainerWriteToBranch(ctx, permission, branch, user)
 }
 
 // CanEnableEditor returns true if the web editor can be enabled for this repository,
@@ -124,24 +129,23 @@ type CanCommitToBranchResults struct {
 }
 
 // CanCommitToBranch returns true if repository is editable and user has proper access level
-//
 // and branch is not protected for push
-func (r *Repository) CanCommitToBranch(ctx context.Context, doer *user_model.User) (CanCommitToBranchResults, error) {
-	protectedBranch, err := git_model.GetFirstMatchProtectedBranchRule(ctx, r.Repository.ID, r.BranchName)
+func CanCommitToBranch(ctx context.Context, doer *user_model.User, repo *repo_model.Repository, branchName string) (CanCommitToBranchResults, error) {
+	protectedBranch, err := git_model.GetFirstMatchProtectedBranchRule(ctx, repo.ID, branchName)
 	if err != nil {
 		return CanCommitToBranchResults{}, err
 	}
 	userCanPush := true
 	requireSigned := false
 	if protectedBranch != nil {
-		protectedBranch.Repo = r.Repository
+		protectedBranch.Repo = repo
 		userCanPush = protectedBranch.CanUserPush(ctx, doer)
 		requireSigned = protectedBranch.RequireSignedCommits
 	}
 
-	sign, keyID, _, err := asymkey_service.SignCRUDAction(ctx, r.Repository.RepoPath(), doer, r.Repository.RepoPath(), git.BranchPrefix+r.BranchName)
+	sign, keyID, _, err := asymkey_service.SignCRUDAction(ctx, repo.RepoPath(), doer, repo.RepoPath(), git.BranchPrefix+branchName)
 
-	canCommit := r.CanEnableEditor() && r.CanWriteToBranch(ctx, doer, r.BranchName) && userCanPush
+	canCommit := repo.CanEnableEditor() && CanWriteToBranch(ctx, doer, repo, branchName) && userCanPush
 	if requireSigned {
 		canCommit = canCommit && sign
 	}
