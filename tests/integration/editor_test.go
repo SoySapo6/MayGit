@@ -234,6 +234,34 @@ func TestEditFileToNewBranchFork(t *testing.T) {
 	})
 }
 
+func testEditFileDiffPreview(t *testing.T, session *TestSession, user, repo, branch, filePath string) {
+	// Get to the 'edit this file' page
+	req := NewRequest(t, "GET", path.Join(user, repo, "_edit", branch, filePath))
+	resp := session.MakeRequest(t, req, http.StatusOK)
+
+	htmlDoc := NewHTMLParser(t, resp.Body)
+	lastCommit := htmlDoc.GetInputValueByName("last_commit")
+	assert.NotEmpty(t, lastCommit)
+
+	// Preview the changes
+	req = NewRequestWithValues(t, "POST", path.Join(user, repo, "_preview", branch, filePath),
+		map[string]string{
+			"_csrf":   htmlDoc.GetCSRF(),
+			"content": "Hello, World (Edited)\n",
+		},
+	)
+	resp = session.MakeRequest(t, req, http.StatusOK)
+
+	assert.Contains(t, resp.Body.String(), `<span class="added-code">Hello, World (Edited)</span>`)
+}
+
+func TestEditFileDiffPreview(t *testing.T) {
+	onGiteaRun(t, func(t *testing.T, u *url.URL) {
+		session := loginUser(t, "user2")
+		testEditFileDiffPreview(t, session, "user2", "repo1", "master", "README.md")
+	})
+}
+
 func TestDeleteFile(t *testing.T) {
 	onGiteaRun(t, func(t *testing.T, u *url.URL) {
 		session := loginUser(t, "user2")
