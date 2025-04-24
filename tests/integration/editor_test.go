@@ -31,7 +31,12 @@ import (
 func TestCreateFile(t *testing.T) {
 	onGiteaRun(t, func(t *testing.T, u *url.URL) {
 		session := loginUser(t, "user2")
-		testCreateFile(t, session, "user2", "user2", "repo1", "master", "master", "direct", "test.txt", "Content")
+		testCreateFile(t, session, "user2", "user2", "repo1", "master", "master", "direct", "test.txt", "Content", "")
+		testCreateFile(
+			t, session, "user2", "user2", "repo1", "master", "master", "direct", "test.txt", "Content",
+			`A file named "test.txt" already exists in this repository.`)
+		testCreateFile(t, session, "user2", "user2", "repo1", "master", "master", "commit-to-new-branch", "test2.txt", "Content",
+			`Branch "master" already exists in this repository.`)
 	})
 }
 
@@ -39,11 +44,11 @@ func TestCreateFileFork(t *testing.T) {
 	onGiteaRun(t, func(t *testing.T, u *url.URL) {
 		session := loginUser(t, "user4")
 		forkToEdit(t, session, "user2", "repo1", "_new", "master", "test.txt")
-		testCreateFile(t, session, "user4", "user2", "repo1", "master", "feature/test", "commit-to-new-branch", "test.txt", "Content")
+		testCreateFile(t, session, "user4", "user2", "repo1", "master", "feature/test", "commit-to-new-branch", "test.txt", "Content", "")
 	})
 }
 
-func testCreateFile(t *testing.T, session *TestSession, user, owner, repo, branch, targetBranch, commitChoice, filePath, content string) {
+func testCreateFile(t *testing.T, session *TestSession, user, owner, repo, branch, targetBranch, commitChoice, filePath, content, expectedError string) {
 	// Request editor page
 	newURL := fmt.Sprintf("/%s/%s/_new/%s/", owner, repo, branch)
 	req := NewRequest(t, "GET", newURL)
@@ -62,6 +67,16 @@ func testCreateFile(t *testing.T, session *TestSession, user, owner, repo, branc
 		"commit_choice":   commitChoice,
 		"new_branch_name": targetBranch,
 	})
+
+	if expectedError != "" {
+		resp := session.MakeRequest(t, req, http.StatusOK)
+
+		// Check for expextecd error message
+		htmlDoc := NewHTMLParser(t, resp.Body)
+		assert.Contains(t, htmlDoc.doc.Find(".ui.flash-message").Text(), expectedError)
+		return
+	}
+
 	session.MakeRequest(t, req, http.StatusSeeOther)
 
 	// Check new file exists
@@ -222,7 +237,9 @@ func TestEditFileToNewBranchFork(t *testing.T) {
 func TestDeleteFile(t *testing.T) {
 	onGiteaRun(t, func(t *testing.T, u *url.URL) {
 		session := loginUser(t, "user2")
-		testDeleteFile(t, session, "user2", "user2", "repo1", "master", "master", "direct", "README.md")
+		testDeleteFile(t, session, "user2", "user2", "repo1", "master", "master", "direct", "README.md", "")
+		testDeleteFile(t, session, "user2", "user2", "repo1", "master", "master", "direct", "MISSING.md",
+			`The file being deleted, "MISSING.md", no longer exists in this repository.`)
 	})
 }
 
@@ -230,25 +247,29 @@ func TestDeleteFileFork(t *testing.T) {
 	onGiteaRun(t, func(t *testing.T, u *url.URL) {
 		session := loginUser(t, "user4")
 		forkToEdit(t, session, "user2", "repo1", "_delete", "master", "README.md")
-		testDeleteFile(t, session, "user4", "user2", "repo1", "master", "feature/test", "commit-to-new-branch", "README.md")
+		testDeleteFile(t, session, "user4", "user2", "repo1", "master", "feature/test", "commit-to-new-branch", "README.md", "")
+		testDeleteFile(t, session, "user4", "user2", "repo1", "master", "feature/missing", "commit-to-new-branch", "MISSING.md",
+			`The file being deleted, "MISSING.md", no longer exists in this repository.`)
 	})
 }
 
-func testDeleteFile(t *testing.T, session *TestSession, user, owner, repo, branch, targetBranch, commitChoice, filePath string) {
-	// Check file exists
-	req := NewRequestf(t, "GET", "/%s/%s/src/branch/%s/%s", owner, repo, branch, filePath)
-	session.MakeRequest(t, req, http.StatusOK)
+func testDeleteFile(t *testing.T, session *TestSession, user, owner, repo, branch, targetBranch, commitChoice, filePath, expectedError string) {
+	if expectedError == "" {
+		// Check file exists
+		req := NewRequestf(t, "GET", "/%s/%s/src/branch/%s/%s", owner, repo, branch, filePath)
+		session.MakeRequest(t, req, http.StatusOK)
+	}
 
 	// Request editor page
 	newURL := fmt.Sprintf("/%s/%s/_delete/%s/%s", owner, repo, branch, filePath)
-	req = NewRequest(t, "GET", newURL)
+	req := NewRequest(t, "GET", newURL)
 	resp := session.MakeRequest(t, req, http.StatusOK)
 
 	doc := NewHTMLParser(t, resp.Body)
 	lastCommit := doc.GetInputValueByName("last_commit")
 	assert.NotEmpty(t, lastCommit)
 
-	// Save new file to master branch
+	// Save deleted file to target branch
 	req = NewRequestWithValues(t, "POST", newURL, map[string]string{
 		"_csrf":           doc.GetCSRF(),
 		"last_commit":     lastCommit,
@@ -256,6 +277,16 @@ func testDeleteFile(t *testing.T, session *TestSession, user, owner, repo, branc
 		"commit_choice":   commitChoice,
 		"new_branch_name": targetBranch,
 	})
+
+	if expectedError != "" {
+		resp := session.MakeRequest(t, req, http.StatusOK)
+
+		// Check for expextecd error message
+		htmlDoc := NewHTMLParser(t, resp.Body)
+		assert.Contains(t, htmlDoc.doc.Find(".ui.flash-message").Text(), expectedError)
+		return
+	}
+
 	session.MakeRequest(t, req, http.StatusSeeOther)
 
 	// Check file was deleted
@@ -266,7 +297,11 @@ func testDeleteFile(t *testing.T, session *TestSession, user, owner, repo, branc
 func TestPatchFile(t *testing.T) {
 	onGiteaRun(t, func(t *testing.T, u *url.URL) {
 		session := loginUser(t, "user2")
-		testPatchFile(t, session, "user2", "user2", "repo1", "master", "feature/test")
+		testPatchFile(t, session, "user2", "user2", "repo1", "master", "feature/test", "Contents", "")
+		testPatchFile(t, session, "user2", "user2", "repo1", "master", "feature/test", "Contents",
+			`Branch "feature/test" already exists in this repository.`)
+		testPatchFile(t, session, "user2", "user2", "repo1", "feature/test", "feature/again", "Conflict",
+			`Unable to apply patch`)
 	})
 }
 
@@ -274,11 +309,11 @@ func TestPatchFileFork(t *testing.T) {
 	onGiteaRun(t, func(t *testing.T, u *url.URL) {
 		session := loginUser(t, "user4")
 		forkToEdit(t, session, "user2", "repo1", "_diffpatch", "master", "README.md")
-		testPatchFile(t, session, "user4", "user2", "repo1", "master", "feature/test")
+		testPatchFile(t, session, "user4", "user2", "repo1", "master", "feature/test", "Contents", "")
 	})
 }
 
-func testPatchFile(t *testing.T, session *TestSession, user, owner, repo, branch, targetBranch string) {
+func testPatchFile(t *testing.T, session *TestSession, user, owner, repo, branch, targetBranch, contents, expectedError string) {
 	// Request editor page
 	newURL := fmt.Sprintf("/%s/%s/_diffpatch/%s/", owner, repo, branch)
 	req := NewRequest(t, "GET", newURL)
@@ -293,17 +328,27 @@ func testPatchFile(t *testing.T, session *TestSession, user, owner, repo, branch
 		"_csrf":       doc.GetCSRF(),
 		"last_commit": lastCommit,
 		"tree_path":   "__dummy__",
-		"content": `diff --git a/patch-file-1.txt b/patch-file-1.txt
+		"content": fmt.Sprintf(`diff --git a/patch-file-1.txt b/patch-file-1.txt
 new file mode 100644
 index 0000000000..aaaaaaaaaa
 --- /dev/null
 +++ b/patch-file-1.txt
 @@ -0,0 +1 @@
-+File 1
-`,
++%s
+`, contents),
 		"commit_choice":   "commit-to-new-branch",
 		"new_branch_name": targetBranch,
 	})
+
+	if expectedError != "" {
+		resp := session.MakeRequest(t, req, http.StatusOK)
+
+		// Check for expextecd error message
+		htmlDoc := NewHTMLParser(t, resp.Body)
+		assert.Contains(t, htmlDoc.doc.Find(".ui.flash-message").Text(), expectedError)
+		return
+	}
+
 	session.MakeRequest(t, req, http.StatusSeeOther)
 
 	// Check new file exists
@@ -482,7 +527,7 @@ func forkToEdit(t *testing.T, session *TestSession, owner, repo, operation, bran
 	assert.Equal(t, "/"+path.Join(owner, repo, operation, branch, filePath), test.RedirectURL(resp))
 }
 
-func testForkToEdit(t *testing.T, session *TestSession, user, owner, repo, branch, filePath string) {
+func testForkToEditFile(t *testing.T, session *TestSession, user, owner, repo, branch, filePath string) {
 	// Fork repository because we can't edit it
 	forkToEdit(t, session, owner, repo, "_edit", branch, filePath)
 
@@ -524,9 +569,34 @@ func testForkToEdit(t *testing.T, session *TestSession, user, owner, repo, branc
 	session.MakeRequest(t, req, http.StatusOK)
 }
 
-func TestForkToEdit(t *testing.T) {
+func TestForkToEditFile(t *testing.T) {
 	onGiteaRun(t, func(t *testing.T, u *url.URL) {
 		session := loginUser(t, "user4")
-		testForkToEdit(t, session, "user4", "user2", "repo1", "master", "README.md")
+		testForkToEditFile(t, session, "user4", "user2", "repo1", "master", "README.md")
+	})
+}
+
+func TestEditFileNotAllowed(t *testing.T) {
+	onGiteaRun(t, func(t *testing.T, u *url.URL) {
+		session := loginUser(t, "user4")
+
+		operations := []string{"_new", "_edit", "_delete", "_upload", "_diffpatch", "_cherrypick"}
+
+		for _, operation := range operations {
+			// Branch does not exist
+			url := path.Join("user2", "repo1", operation, "missing", "README.md")
+			req := NewRequest(t, "GET", url)
+			session.MakeRequest(t, req, http.StatusNotFound)
+
+			// Private repository
+			url = path.Join("user2", "repo2", operation, "master", "Home.md")
+			req = NewRequest(t, "GET", url)
+			session.MakeRequest(t, req, http.StatusNotFound)
+
+			// Empty repository
+			url = path.Join("org41", "repo61", operation, "master", "README.md")
+			req = NewRequest(t, "GET", url)
+			session.MakeRequest(t, req, http.StatusNotFound)
+		}
 	})
 }
