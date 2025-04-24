@@ -109,9 +109,9 @@ func getEditRepositoryOrError(ctx *context.Context, tpl templates.TplName, form 
 
 // CheckPushEditBranch chesk if pushing to the branch in the edit repository is possible,
 // and if not renders an error and returns false.
-func canPushToEditRepository(ctx *context.Context, editRepo *repo_model.Repository, branchName string, tpl templates.TplName, form any) bool {
-	// When pushing to a fork or another branch on the same repository, it should not exist yet
-	if ctx.Repo.Repository != editRepo || ctx.Repo.BranchName != branchName {
+func canPushToEditRepository(ctx *context.Context, editRepo *repo_model.Repository, branchName, commitChoice string, tpl templates.TplName, form any) bool {
+	// When pushing to a fork or chosing to commit to a new branch, it should not exist yet
+	if ctx.Repo.Repository != editRepo || commitChoice == frmCommitChoiceNewBranch {
 		if exist, err := git_model.IsBranchExist(ctx, editRepo.ID, branchName); err == nil && exist {
 			ctx.Data["Err_NewBranchName"] = true
 			ctx.RenderWithErr(ctx.Tr("repo.editor.branch_already_exists", branchName), tpl, form)

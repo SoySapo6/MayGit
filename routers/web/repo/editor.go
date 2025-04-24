@@ -272,7 +272,7 @@ func editFilePost(ctx *context.Context, form forms.EditRepoFileForm, isNewFile b
 	renderCommitRights(ctx, editRepo)
 
 	// Cannot commit to an existing branch if user doesn't have rights
-	if !canPushToEditRepository(ctx, editRepo, branchName, tplEditFile, &form) {
+	if !canPushToEditRepository(ctx, editRepo, branchName, form.CommitChoice, tplEditFile, &form) {
 		return
 	}
 
@@ -512,7 +512,7 @@ func DeleteFilePost(ctx *context.Context) {
 	renderCommitRights(ctx, editRepo)
 
 	// Cannot commit to an existing branch if user doesn't have rights
-	if !canPushToEditRepository(ctx, editRepo, branchName, tplDeleteFile, &form) {
+	if !canPushToEditRepository(ctx, editRepo, branchName, form.CommitChoice, tplDeleteFile, &form) {
 		return
 	}
 
@@ -710,7 +710,7 @@ func UploadFilePost(ctx *context.Context) {
 
 	renderCommitRights(ctx, editRepo)
 
-	if !canPushToEditRepository(ctx, editRepo, branchName, tplUploadFile, &form) {
+	if !canPushToEditRepository(ctx, editRepo, branchName, form.CommitChoice, tplUploadFile, &form) {
 		return
 	}
 

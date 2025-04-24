@@ -79,7 +79,7 @@ func NewDiffPatchPost(ctx *context.Context) {
 	renderCommitRights(ctx, editRepo)
 
 	// Cannot commit to an existing branch if user doesn't have rights
-	if !canPushToEditRepository(ctx, editRepo, branchName, tplPatchFile, &form) {
+	if !canPushToEditRepository(ctx, editRepo, branchName, form.CommitChoice, tplPatchFile, &form) {
 		return
 	}
 
