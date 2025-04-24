@@ -1,4 +1,5 @@
 // Copyright 2016 The Gogs Authors. All rights reserved.
+// Copyright 2025 The Gitea Authors. All rights reserved.
 // SPDX-License-Identifier: MIT
 
 package repo
@@ -111,7 +112,7 @@ func getEditRepositoryOrError(ctx *context.Context, tpl templates.TplName, form 
 // and if not renders an error and returns false.
 func canPushToEditRepository(ctx *context.Context, editRepo *repo_model.Repository, branchName, commitChoice string, tpl templates.TplName, form any) bool {
 	// When pushing to a fork or chosing to commit to a new branch, it should not exist yet
-	if ctx.Repo.Repository != editRepo || commitChoice == frmCommitChoiceNewBranch {
+	if editRepo.ID != ctx.Repo.Repository.ID || commitChoice == frmCommitChoiceNewBranch {
 		if exist, err := git_model.IsBranchExist(ctx, editRepo.ID, branchName); err == nil && exist {
 			ctx.Data["Err_NewBranchName"] = true
 			ctx.RenderWithErr(ctx.Tr("repo.editor.branch_already_exists", branchName), tpl, form)
@@ -137,8 +138,8 @@ func canPushToEditRepository(ctx *context.Context, editRepo *repo_model.Reposito
 // to the user fork, if needed. On failure, it displays and returns an error. The
 // branch name to be used for editing is returned.
 func pushToEditRepositoryOrError(ctx *context.Context, editRepo *repo_model.Repository, branchName string, tpl templates.TplName, form any) (string, error) {
-	// If editing the repository, no need to push anything
-	if editRepo == ctx.Repo.Repository {
+	// If editing the same repository, no need to push anything
+	if editRepo.ID == ctx.Repo.Repository.ID {
 		return ctx.Repo.BranchName, nil
 	}
 

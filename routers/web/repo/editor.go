@@ -1,4 +1,5 @@
 // Copyright 2016 The Gogs Authors. All rights reserved.
+// Copyright 2025 The Gitea Authors. All rights reserved.
 // SPDX-License-Identifier: MIT
 
 package repo
@@ -46,7 +47,7 @@ func canCreateBasePullRequest(ctx *context.Context, editRepo *repo_model.Reposit
 }
 
 func renderCommitRights(ctx *context.Context, editRepo *repo_model.Repository) bool {
-	if editRepo == ctx.Repo.Repository {
+	if editRepo.ID == ctx.Repo.Repository.ID {
 		// Editing the same repository that we are viewing
 		canCommitToBranch, err := context.CanCommitToBranch(ctx, ctx.Doer, ctx.Repo.Repository, ctx.Repo.BranchName)
 		if err != nil {
