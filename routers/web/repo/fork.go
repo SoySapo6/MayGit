@@ -155,40 +155,6 @@ func ForkPost(ctx *context.Context) {
 		return
 	}
 
-	var err error
-	traverseParentRepo := forkRepo
-	for {
-		if !repository.CanUserForkBetweenOwners(ctxUser.ID, traverseParentRepo.OwnerID) {
-			ctx.RenderWithErr(ctx.Tr("repo.settings.new_owner_has_same_repo"), tplFork, &form)
-			return
-		}
-		repo := repo_model.GetForkedRepo(ctx, ctxUser.ID, traverseParentRepo.ID)
-		if repo != nil {
-			ctx.Redirect(ctxUser.HomeLink() + "/" + url.PathEscape(repo.Name))
-			return
-		}
-		if !traverseParentRepo.IsFork {
-			break
-		}
-		traverseParentRepo, err = repo_model.GetRepositoryByID(ctx, traverseParentRepo.ForkID)
-		if err != nil {
-			ctx.ServerError("GetRepositoryByID", err)
-			return
-		}
-	}
-
-	// Check if user is allowed to create repo's on the organization.
-	if ctxUser.IsOrganization() {
-		isAllowedToFork, err := organization.OrgFromUser(ctxUser).CanCreateOrgRepo(ctx, ctx.Doer.ID)
-		if err != nil {
-			ctx.ServerError("CanCreateOrgRepo", err)
-			return
-		} else if !isAllowedToFork {
-			ctx.HTTPError(http.StatusForbidden)
-			return
-		}
-	}
-
 	repo := forkRepositoryOrError(ctx, ctxUser, repo_service.ForkRepoOptions{
 		BaseRepo:     forkRepo,
 		Name:         form.RepoName,
@@ -203,6 +169,39 @@ func ForkPost(ctx *context.Context) {
 }
 
 func forkRepositoryOrError(ctx *context.Context, user *user_model.User, opts repo_service.ForkRepoOptions, tpl templates.TplName, form any) *repo_model.Repository {
+	var err error
+	traverseParentRepo := opts.BaseRepo
+	for {
+		if !repository.CanUserForkBetweenOwners(user.ID, traverseParentRepo.OwnerID) {
+			ctx.RenderWithErr(ctx.Tr("repo.settings.new_owner_has_same_repo"), tpl, form)
+			return nil
+		}
+		repo := repo_model.GetForkedRepo(ctx, user.ID, traverseParentRepo.ID)
+		if repo != nil {
+			return repo
+		}
+		if !traverseParentRepo.IsFork {
+			break
+		}
+		traverseParentRepo, err = repo_model.GetRepositoryByID(ctx, traverseParentRepo.ForkID)
+		if err != nil {
+			ctx.ServerError("GetRepositoryByID", err)
+			return nil
+		}
+	}
+
+	// Check if user is allowed to create repo's on the organization.
+	if user.IsOrganization() {
+		isAllowedToFork, err := organization.OrgFromUser(user).CanCreateOrgRepo(ctx, ctx.Doer.ID)
+		if err != nil {
+			ctx.ServerError("CanCreateOrgRepo", err)
+			return nil
+		} else if !isAllowedToFork {
+			ctx.HTTPError(http.StatusForbidden)
+			return nil
+		}
+	}
+
 	repo, err := repo_service.ForkRepository(ctx, ctx.Doer, user, opts)
 	if err != nil {
 		ctx.Data["Err_RepoName"] = true
@@ -210,9 +209,9 @@ func forkRepositoryOrError(ctx *context.Context, user *user_model.User, opts rep
 		case repo_model.IsErrReachLimitOfRepo(err):
 			maxCreationLimit := user.MaxCreationLimit()
 			msg := ctx.TrN(maxCreationLimit, "repo.form.reach_limit_of_creation_1", "repo.form.reach_limit_of_creation_n", maxCreationLimit)
-			ctx.RenderWithErr(msg, tpl, &form)
+			ctx.RenderWithErr(msg, tpl, form)
 		case repo_model.IsErrRepoAlreadyExist(err):
-			ctx.RenderWithErr(ctx.Tr("repo.settings.new_owner_has_same_repo"), tpl, &form)
+			ctx.RenderWithErr(ctx.Tr("repo.settings.new_owner_has_same_repo"), tpl, form)
 		case repo_model.IsErrRepoFilesAlreadyExist(err):
 			switch {
 			case ctx.IsUserSiteAdmin() || (setting.Repository.AllowAdoptionOfUnadoptedRepositories && setting.Repository.AllowDeleteOfUnadoptedRepositories):
@@ -225,9 +224,9 @@ func forkRepositoryOrError(ctx *context.Context, user *user_model.User, opts rep
 				ctx.RenderWithErr(ctx.Tr("form.repository_files_already_exist"), tpl, form)
 			}
 		case db.IsErrNameReserved(err):
-			ctx.RenderWithErr(ctx.Tr("repo.form.name_reserved", err.(db.ErrNameReserved).Name), tpl, &form)
+			ctx.RenderWithErr(ctx.Tr("repo.form.name_reserved", err.(db.ErrNameReserved).Name), tpl, form)
 		case db.IsErrNamePatternNotAllowed(err):
-			ctx.RenderWithErr(ctx.Tr("repo.form.name_pattern_not_allowed", err.(db.ErrNamePatternNotAllowed).Pattern), tpl, &form)
+			ctx.RenderWithErr(ctx.Tr("repo.form.name_pattern_not_allowed", err.(db.ErrNamePatternNotAllowed).Pattern), tpl, form)
 		case errors.Is(err, user_model.ErrBlockedUser):
 			ctx.RenderWithErr(ctx.Tr("repo.fork.blocked_user"), tpl, form)
 		default:
