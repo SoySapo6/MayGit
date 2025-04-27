@@ -47,24 +47,24 @@ func canCreateBasePullRequest(ctx *context.Context, editRepo *repo_model.Reposit
 }
 
 func renderCommitRights(ctx *context.Context, editRepo *repo_model.Repository) bool {
-	if editRepo.ID == ctx.Repo.Repository.ID {
-		// Editing the same repository that we are viewing
-		canCommitToBranch, err := context.CanCommitToBranch(ctx, ctx.Doer, ctx.Repo.Repository, ctx.Repo.BranchName)
-		if err != nil {
-			log.Error("CanCommitToBranch: %v", err)
-		}
-
-		ctx.Data["CanCommitToBranch"] = canCommitToBranch
-		ctx.Data["CanCreatePullRequest"] = ctx.Repo.Repository.UnitEnabled(ctx, unit.TypePullRequests) || canCreateBasePullRequest(ctx, editRepo)
-
-		return canCommitToBranch.CanCommitToBranch
+	canCommitToBranch, err := context.CanCommitToBranch(ctx, ctx.Doer, editRepo, ctx.Repo.BranchName)
+	if err != nil {
+		log.Error("CanCommitToBranch: %v", err)
 	}
 
-	// Editing a user fork of the repository we are viewing, always choose a new branch
-	ctx.Data["CanCommitToBranch"] = context.CanCommitToBranchResults{}
-	ctx.Data["CanCreatePullRequest"] = canCreateBasePullRequest(ctx, editRepo)
+	if editRepo.ID == ctx.Repo.Repository.ID {
+		// Editing the same repository that we are viewing
+		ctx.Data["CanCreatePullRequest"] = ctx.Repo.Repository.UnitEnabled(ctx, unit.TypePullRequests) || canCreateBasePullRequest(ctx, editRepo)
+	} else {
+		// Editing a user fork of the repository we are viewing, always choose a new branch
+		canCommitToBranch.CanCommitToBranch = false
+		canCommitToBranch.UserCanPush = false
+		ctx.Data["CanCreatePullRequest"] = canCreateBasePullRequest(ctx, editRepo)
+	}
 
-	return false
+	ctx.Data["CanCommitToBranch"] = canCommitToBranch
+
+	return canCommitToBranch.CanCommitToBranch
 }
 
 // redirectForCommitChoice redirects after committing the edit to a branch
