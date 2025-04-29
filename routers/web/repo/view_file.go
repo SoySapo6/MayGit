@@ -245,7 +245,10 @@ func prepareToRenderFile(ctx *context.Context, entry *git.TreeEntry) {
 		}
 		if !fInfo.isLFSFile {
 			if ctx.Repo.CanEnableEditor() {
-				if lfsLock != nil && lfsLock.OwnerID != ctx.Doer.ID {
+				if !ctx.IsSigned {
+					ctx.Data["CanEditFile"] = false
+					ctx.Data["EditFileTooltip"] = ctx.Tr("repo.editor.must_be_signed_in")
+				} else if lfsLock != nil && lfsLock.OwnerID != ctx.Doer.ID {
 					ctx.Data["CanEditFile"] = false
 					ctx.Data["EditFileTooltip"] = ctx.Tr("repo.editor.this_file_locked")
 				} else {
@@ -306,7 +309,10 @@ func prepareToRenderFile(ctx *context.Context, entry *git.TreeEntry) {
 	}
 
 	if ctx.Repo.CanEnableEditor() {
-		if lfsLock != nil && lfsLock.OwnerID != ctx.Doer.ID {
+		if !ctx.IsSigned {
+			ctx.Data["CanDeleteFile"] = false
+			ctx.Data["DeleteFileTooltip"] = ctx.Tr("repo.editor.must_be_signed_in")
+		} else if lfsLock != nil && lfsLock.OwnerID != ctx.Doer.ID {
 			ctx.Data["CanDeleteFile"] = false
 			ctx.Data["DeleteFileTooltip"] = ctx.Tr("repo.editor.this_file_locked")
 		} else {

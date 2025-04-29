@@ -214,7 +214,13 @@ func prepareToRenderReadmeFile(ctx *context.Context, subfolder string, readmeFil
 
 	if !fInfo.isLFSFile {
 		if ctx.Repo.CanEnableEditor() {
-			ctx.Data["CanEditReadmeFile"] = true
+			if !ctx.IsSigned {
+				ctx.Data["CanEditReadmeFile"] = false
+				ctx.Data["EditReadmeFileTooltip"] = ctx.Tr("repo.editor.must_be_signed_in")
+			} else {
+				ctx.Data["CanEditReadmeFile"] = true
+				ctx.Data["EditReadmeFileTooltip"] = ctx.Tr("repo.editor.edit_this_file")
+			}
 		}
 	}
 }
