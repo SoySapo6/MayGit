@@ -18,8 +18,8 @@
 							<span class="section"><a href="{{$.BranchLink}}/{{index $.TreePaths $i | PathEscapeSegments}}">{{$v}}</a></span>
 						{{end}}
 					{{end}}
-					<input type="hidden" id="tree_path" name="tree_path" value="{{.TreePath}}" required>
-					<input type="hidden" id="edit_operation" name="edit_operation" value="{{.EditOperation}}" required>
+					<input type="hidden" name="tree_path" value="{{.TreePath}}" required>
+					<input type="hidden" name="edit_operation" value="{{.EditOperation}}" required>
 				</div>
 			</div>
 			<div class="field center">
