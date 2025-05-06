@@ -24,6 +24,7 @@ import (
 	"code.gitea.io/gitea/models/unit"
 	user_model "code.gitea.io/gitea/models/user"
 	"code.gitea.io/gitea/modules/emoji"
+	"code.gitea.io/gitea/modules/fileicon"
 	"code.gitea.io/gitea/modules/git"
 	"code.gitea.io/gitea/modules/gitrepo"
 	issue_template "code.gitea.io/gitea/modules/issue/template"
@@ -181,6 +182,7 @@ func setMergeTarget(ctx *context.Context, pull *issues_model.PullRequest) {
 
 // GetPullDiffStats get Pull Requests diff stats
 func GetPullDiffStats(ctx *context.Context) {
+	// FIXME: this getPullInfo seems to be a duplicate call with other route handlers
 	issue, ok := getPullInfo(ctx)
 	if !ok {
 		return
@@ -188,21 +190,19 @@ func GetPullDiffStats(ctx *context.Context) {
 	pull := issue.PullRequest
 
 	mergeBaseCommitID := GetMergedBaseCommitID(ctx, issue)
-
 	if mergeBaseCommitID == "" {
-		ctx.NotFound(nil)
-		return
+		return // no merge base, do nothing, do not stop the route handler, see below
 	}
 
+	// do not report 500 server error to end users if error occurs, otherwise a PR missing ref won't be able to view.
 	headCommitID, err := ctx.Repo.GitRepo.GetRefCommitID(pull.GetGitRefName())
 	if err != nil {
-		ctx.ServerError("GetRefCommitID", err)
+		log.Error("Failed to GetRefCommitID: %v, repo: %v", err, ctx.Repo.Repository.FullName())
 		return
 	}
-
 	diffShortStat, err := gitdiff.GetDiffShortStat(ctx.Repo.GitRepo, mergeBaseCommitID, headCommitID)
 	if err != nil {
-		ctx.ServerError("GetDiffShortStat", err)
+		log.Error("Failed to GetDiffShortStat: %v, repo: %v", err, ctx.Repo.Repository.FullName())
 		return
 	}
 
@@ -824,7 +824,12 @@ func viewPullFiles(ctx *context.Context, specifiedStartCommit, specifiedEndCommi
 		if reviewState != nil {
 			filesViewedState = reviewState.UpdatedFiles
 		}
-		ctx.PageData["DiffFileTree"] = transformDiffTreeForWeb(diffTree, filesViewedState)
+
+		renderedIconPool := fileicon.NewRenderedIconPool()
+		ctx.PageData["DiffFileTree"] = transformDiffTreeForWeb(renderedIconPool, diffTree, filesViewedState)
+		ctx.PageData["FolderIcon"] = fileicon.RenderEntryIconHTML(renderedIconPool, fileicon.EntryInfoFolder())
+		ctx.PageData["FolderOpenIcon"] = fileicon.RenderEntryIconHTML(renderedIconPool, fileicon.EntryInfoFolderOpen())
+		ctx.Data["FileIconPoolHTML"] = renderedIconPool.RenderToHTML()
 	}
 
 	ctx.Data["Diff"] = diff
@@ -1053,7 +1058,7 @@ func MergePullRequest(ctx *context.Context) {
 			} else {
 				ctx.JSONError(ctx.Tr("repo.issues.closed_title"))
 			}
-		case errors.Is(err, pull_service.ErrUserNotAllowedToMerge):
+		case errors.Is(err, pull_service.ErrNoPermissionToMerge):
 			ctx.JSONError(ctx.Tr("repo.pulls.update_not_allowed"))
 		case errors.Is(err, pull_service.ErrHasMerged):
 			ctx.JSONError(ctx.Tr("repo.pulls.has_merged"))
@@ -1061,7 +1066,7 @@ func MergePullRequest(ctx *context.Context) {
 			ctx.JSONError(ctx.Tr("repo.pulls.no_merge_wip"))
 		case errors.Is(err, pull_service.ErrNotMergeableState):
 			ctx.JSONError(ctx.Tr("repo.pulls.no_merge_not_ready"))
-		case pull_service.IsErrDisallowedToMerge(err):
+		case errors.Is(err, pull_service.ErrNotReadyToMerge):
 			ctx.JSONError(ctx.Tr("repo.pulls.no_merge_not_ready"))
 		case asymkey_service.IsErrWontSign(err):
 			ctx.JSONError(err.Error()) // has no translation ...
@@ -1291,11 +1296,6 @@ func CompareAndPullRequestPost(ctx *context.Context) {
 	)
 
 	ci := ParseCompareInfo(ctx)
-	defer func() {
-		if ci != nil && ci.HeadGitRepo != nil {
-			ci.HeadGitRepo.Close()
-		}
-	}()
 	if ctx.Written() {
 		return
 	}
