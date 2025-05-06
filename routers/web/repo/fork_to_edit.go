@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"path"
-	"strings"
 
 	git_model "code.gitea.io/gitea/models/git"
 	access_model "code.gitea.io/gitea/models/perm/access"
@@ -167,27 +166,20 @@ func updateEditRepositoryIsEmpty(ctx *context.Context, editRepo *repo_model.Repo
 		return
 	}
 
-	editGitRepo, err := gitrepo.OpenRepository(git.DefaultContext, editRepo)
+	editGitRepo, err := gitrepo.OpenRepository(ctx, editRepo)
 	if err != nil {
 		log.Error("gitrepo.OpenRepository: %v", err)
 		return
 	}
-	if editGitRepo == nil {
-		return
-	}
+	defer editGitRepo.Close()
 
 	if isEmpty, err := editGitRepo.IsEmpty(); err == nil && !isEmpty {
 		_ = repo_model.UpdateRepositoryCols(ctx, &repo_model.Repository{ID: editRepo.ID, IsEmpty: false}, "is_empty")
 	}
-	editGitRepo.Close()
 }
 
 func forkToEditFileCommon(ctx *context.Context, editOperation, treePath string, notEditableMessage any) {
-	// Check if the filename (and additional path) is specified in the querystring
-	// (filename is a misnomer, but kept for compatibility with GitHub)
-	filePath, _ := path.Split(ctx.Req.URL.Query().Get("filename"))
-	filePath = strings.Trim(filePath, "/")
-	treeNames, treePaths := getParentTreeFields(path.Join(ctx.Repo.TreePath, filePath))
+	treeNames, treePaths := getParentTreeFields(treePath)
 
 	ctx.Data["EditOperation"] = editOperation
 	ctx.Data["TreePath"] = treePath
@@ -201,8 +193,6 @@ func ForkToEditFilePost(ctx *context.Context) {
 	form := web.GetForm(ctx).(*forms.ForkToEditRepoFileForm)
 
 	editRepo, notEditableMessage := getEditRepository(ctx)
-
-	ctx.Data["PageHasPosted"] = true
 
 	// Fork repository, if it doesn't already exist
 	if editRepo == nil && notEditableMessage == nil {

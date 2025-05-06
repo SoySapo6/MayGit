@@ -5,7 +5,6 @@
 		{{template "base/alert" .}}
 		<form class="ui edit form" method="post" action="{{.RepoLink}}/_fork_to_edit/{{.BranchName | PathEscapeSegments}}">
 			{{.CsrfTokenHtml}}
-			<input type="hidden" name="page_has_posted" value="{{.PageHasPosted}}">
 			<div class="repo-editor-header">
 				<div class="ui breadcrumb field{{if .Err_TreePath}} error{{end}}">
 					<a class="section" href="{{$.BranchLink}}">{{.Repository.Name}}</a>

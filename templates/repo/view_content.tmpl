@@ -41,9 +41,8 @@
 		<a href="{{.Repository.Link}}/find/{{.RefTypeNameSubURL}}" class="ui compact basic button">{{ctx.Locale.Tr "repo.find_file.go_to_file"}}</a>
 	{{end}}
 
-	{{if and .RefFullName.IsBranch (not .IsViewFile) .Repository.CanEnableEditor}}
-		<button class="ui dropdown basic compact jump button"
-			{{if not .IsSigned}} disabled data-tooltip-content="{{ctx.Locale.Tr "repo.editor.must_be_signed_in"}}"{{end}}>
+	{{if and .RefFullName.IsBranch (not .IsViewFile) .Repository.CanEnableEditor .IsSigned}}
+		<button class="ui dropdown basic compact jump button">
 			{{ctx.Locale.Tr "repo.editor.add_file"}}
 			{{svg "octicon-triangle-down" 14 "dropdown icon"}}
 			<div class="menu">
