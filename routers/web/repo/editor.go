@@ -847,7 +847,6 @@ func cleanUploadFileName(name string) string {
 }
 
 // UploadFileToServer upload file to server file dir not git
-// This is independent of any repository, no repository permissions are checked to call this.
 func UploadFileToServer(ctx *context.Context) {
 	file, header, err := ctx.Req.FormFile("file")
 	if err != nil {
@@ -887,7 +886,6 @@ func UploadFileToServer(ctx *context.Context) {
 }
 
 // RemoveUploadFileFromServer remove file from server file dir
-// This is independent of any repository, no repository permissions are checked to call this.
 func RemoveUploadFileFromServer(ctx *context.Context) {
 	form := web.GetForm(ctx).(*forms.RemoveUploadFileForm)
 	if len(form.File) == 0 {

@@ -76,6 +76,58 @@ func CanWriteToBranch(ctx context.Context, user *user_model.User, repo *repo_mod
 	return issues_model.CanMaintainerWriteToBranch(ctx, permission, branch, user)
 }
 
+// RepositoryNotEditableMessage explains why a repository can not be edited by the user
+type RepositoryNotEditableMessage struct {
+	Reason     string
+	Repository string
+}
+
+// GetEditRepository returns the repository where the editor will actually write the
+// the edits to. This may be a fork of the repository owned by the user. If no repository
+// can be found for editing, either a reason or error is returned.
+func GetEditableRepository(ctx context.Context, user *user_model.User, repo *repo_model.Repository, branch string) (*repo_model.Repository, RepositoryNotEditableMessage, error) {
+	if CanWriteToBranch(ctx, user, repo, branch) {
+		return repo, RepositoryNotEditableMessage{}, nil
+	}
+
+	// If we can't write to the branch, try find a user fork to create a branch in instead
+	userRepo, err := repo_model.GetUserFork(ctx, repo.ID, user.ID)
+	if err != nil {
+		return nil, RepositoryNotEditableMessage{}, fmt.Errorf("GetUserFork: %v", err)
+	}
+	if userRepo == nil {
+		return nil, RepositoryNotEditableMessage{}, nil
+	}
+
+	// Load repository information
+	if err := userRepo.LoadOwner(ctx); err != nil {
+		return nil, RepositoryNotEditableMessage{}, fmt.Errorf("LoadOwner: %v", err)
+	}
+	if err := userRepo.GetBaseRepo(ctx); err != nil || userRepo.BaseRepo == nil {
+		if err != nil {
+			return nil, RepositoryNotEditableMessage{}, fmt.Errorf("GetBaseRepo: %v", err)
+		}
+		return nil, RepositoryNotEditableMessage{}, errors.New("GetBaseRepo: Expected a base repo for user fork")
+	}
+
+	// Check code unit, archiving and permissions.
+	if !userRepo.UnitEnabled(ctx, unit_model.TypeCode) {
+		return nil, RepositoryNotEditableMessage{Reason: "repo.editor.fork_code_disabled", Repository: userRepo.FullName()}, nil
+	}
+	if userRepo.IsArchived {
+		return nil, RepositoryNotEditableMessage{Reason: "repo.editor.fork_is_archived", Repository: userRepo.FullName()}, nil
+	}
+	permission, err := access_model.GetUserRepoPermission(ctx, userRepo, user)
+	if err != nil {
+		return nil, RepositoryNotEditableMessage{}, fmt.Errorf("access_model.GetUserRepoPermission: %v", err)
+	}
+	if !permission.CanWrite(unit_model.TypeCode) {
+		return nil, RepositoryNotEditableMessage{Reason: "repo.editor.fork_no_permission", Repository: userRepo.FullName()}, nil
+	}
+
+	return userRepo, RepositoryNotEditableMessage{}, nil
+}
+
 // CanEnableEditor returns true if the web editor can be enabled for this repository,
 // either by directly writing to the repository or to a user fork.
 func (r *Repository) CanEnableEditor() bool {
@@ -113,6 +165,17 @@ func MustEnableEditor() func(ctx *Context) {
 func MustBeAbleToUpload() func(ctx *Context) {
 	return func(ctx *Context) {
 		if !setting.Repository.Upload.Enabled || !ctx.Repo.Repository.CanEnableEditor() {
+			ctx.NotFound(nil)
+		}
+	}
+}
+
+// MustHaveEditableRepository checks that there exists a repository that can be written
+// to by the user for editing.
+func MustHaveEditableRepository() func(ctx *Context) {
+	return func(ctx *Context) {
+		editRepo, _, _ := GetEditableRepository(ctx, ctx.Doer, ctx.Repo.Repository, ctx.Repo.BranchName)
+		if editRepo == nil {
 			ctx.NotFound(nil)
 		}
 	}
