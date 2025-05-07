@@ -31,77 +31,84 @@ const (
 // getEditRepository returns the repository where the actual edits will be written to.
 // This may be a fork of the repository owned by the user. If no repository can be found
 // for editing, nil is returned along with a message explaining why editing is not possible.
-func getEditRepository(ctx *context.Context) (*repo_model.Repository, any) {
+func getEditRepository(ctx *context.Context) (*repo_model.Repository, any, error) {
 	if context.CanWriteToBranch(ctx, ctx.Doer, ctx.Repo.Repository, ctx.Repo.BranchName) {
-		return ctx.Repo.Repository, nil
+		return ctx.Repo.Repository, nil, nil
 	}
 
 	// If we can't write to the branch, try find a user fork to create a branch in instead
 	userRepo, err := repo_model.GetUserFork(ctx, ctx.Repo.Repository.ID, ctx.Doer.ID)
 	if err != nil {
-		log.Error("GetUserFork: %v", err)
-		return nil, nil
+		return nil, nil, fmt.Errorf("GetUserFork: %v", err)
 	}
 	if userRepo == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	// Load repository information
 	if err := userRepo.LoadOwner(ctx); err != nil {
-		log.Error("LoadOwner: %v", err)
-		return nil, ctx.Tr("repo.editor.fork_internal_error", userRepo.FullName())
+		return nil, nil, fmt.Errorf("LoadOwner: v", err)
 	}
 	if err := userRepo.GetBaseRepo(ctx); err != nil || userRepo.BaseRepo == nil {
 		if err != nil {
-			log.Error("GetBaseRepo: %v", err)
-		} else {
-			log.Error("GetBaseRepo: Expected a base repo for user fork", err)
+			return nil, nil, fmt.Errorf("GetBaseRepo: %v", err)
 		}
-		return nil, ctx.Tr("repo.editor.fork_internal_error", userRepo.FullName())
+		return nil, nil, fmt.Errorf("GetBaseRepo: Expected a base repo for user fork")
 	}
 
 	// Check code unit, archiving and permissions.
 	if !userRepo.UnitEnabled(ctx, unit.TypeCode) {
-		return nil, ctx.Tr("repo.editor.fork_code_disabled", userRepo.FullName())
+		return nil, ctx.Tr("repo.editor.fork_code_disabled", userRepo.FullName()), nil
 	}
 	if userRepo.IsArchived {
-		return nil, ctx.Tr("repo.editor.fork_is_archived", userRepo.FullName())
+		return nil, ctx.Tr("repo.editor.fork_is_archived", userRepo.FullName()), nil
 	}
 	permission, err := access_model.GetUserRepoPermission(ctx, userRepo, ctx.Doer)
 	if err != nil {
-		log.Error("access_model.GetUserRepoPermission: %v", err)
-		return nil, ctx.Tr("repo.editor.fork_internal_error", userRepo.FullName())
+		return nil, nil, fmt.Errorf("access_model.GetUserRepoPermission: %v", err)
 	}
 	if !permission.CanWrite(unit.TypeCode) {
-		return nil, ctx.Tr("repo.editor.fork_no_permission", userRepo.FullName())
+		return nil, ctx.Tr("repo.editor.fork_no_permission", userRepo.FullName()), nil
 	}
 
-	ctx.Data["ForkRepo"] = userRepo
-	return userRepo, nil
+	return userRepo, nil, nil
 }
 
-// GetEditRepository returns the repository where the edits will be written to.
+// getEditRepositoryOrFork returns the repository where the edits will be written to.
 // If no repository is editable, redirects to a page to create a fork.
 func getEditRepositoryOrFork(ctx *context.Context, editOperation string) *repo_model.Repository {
-	editRepo, notEditableMessage := getEditRepository(ctx)
-	if editRepo != nil {
-		return editRepo
+	editRepo, notEditableMessage, err := getEditRepository(ctx)
+	if err != nil {
+		ctx.ServerError("getEditRepository", err)
+		return nil
 	}
-
-	// No editable repository, suggest to create a fork
-	forkToEditFileCommon(ctx, editOperation, ctx.Repo.TreePath, notEditableMessage)
-	ctx.HTML(http.StatusOK, tplForkFile)
-	return nil
+	if editRepo == nil {
+		// No editable repository, suggest to create a fork
+		forkToEditFileCommon(ctx, editOperation, ctx.Repo.TreePath, notEditableMessage)
+		ctx.HTML(http.StatusOK, tplForkFile)
+		return nil
+	}
+	if editRepo.ID != ctx.Repo.Repository.ID {
+		ctx.Data["ForkRepo"] = editRepo
+	}
+	return editRepo
 }
 
-// GetEditRepository returns the repository where the edits will be written to.
+// getEditRepositoryOrError returns the repository where the edits will be written to.
 // If no repository is editable, display an error.
 func getEditRepositoryOrError(ctx *context.Context, tpl templates.TplName, form any) *repo_model.Repository {
-	editRepo, _ := getEditRepository(ctx)
+	editRepo, _, err := getEditRepository(ctx)
+	if err != nil {
+		ctx.ServerError("getEditRepository", err)
+		return nil
+	}
 	if editRepo == nil {
 		// No editable repo, maybe the fork was deleted in the meantime
 		ctx.RenderWithErr(ctx.Tr("repo.editor.cannot_find_editable_repo"), tpl, form)
 		return nil
+	}
+	if editRepo.ID != ctx.Repo.Repository.ID {
+		ctx.Data["ForkRepo"] = editRepo
 	}
 	return editRepo
 }
@@ -181,7 +188,11 @@ func forkToEditFileCommon(ctx *context.Context, editOperation, treePath string, 
 func ForkToEditFilePost(ctx *context.Context) {
 	form := web.GetForm(ctx).(*forms.ForkToEditRepoFileForm)
 
-	editRepo, notEditableMessage := getEditRepository(ctx)
+	editRepo, notEditableMessage, err := getEditRepository(ctx)
+	if err != nil {
+		ctx.ServerError("getEditRepository", err)
+		return
+	}
 
 	// Fork repository, if it doesn't already exist
 	if editRepo == nil && notEditableMessage == nil {
