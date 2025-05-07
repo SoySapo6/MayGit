@@ -14,7 +14,6 @@ import (
 	repo_model "code.gitea.io/gitea/models/repo"
 	"code.gitea.io/gitea/models/unit"
 	"code.gitea.io/gitea/modules/git"
-	"code.gitea.io/gitea/modules/gitrepo"
 	"code.gitea.io/gitea/modules/log"
 	repo_module "code.gitea.io/gitea/modules/repository"
 	"code.gitea.io/gitea/modules/templates"
@@ -160,22 +159,12 @@ func pushToEditRepositoryOrError(ctx *context.Context, editRepo *repo_model.Repo
 	return branchName, nil
 }
 
-// updateEditRepositoryIsEmpty updates the the edit repository to mark it as no longer empty
-func updateEditRepositoryIsEmpty(ctx *context.Context, editRepo *repo_model.Repository) {
+// markRepositoryAsNonEmpty marks the repository as no longer empty
+func markRepositoryAsNonEmpty(ctx *context.Context, editRepo *repo_model.Repository) {
 	if !editRepo.IsEmpty {
 		return
 	}
-
-	editGitRepo, err := gitrepo.OpenRepository(ctx, editRepo)
-	if err != nil {
-		log.Error("gitrepo.OpenRepository: %v", err)
-		return
-	}
-	defer editGitRepo.Close()
-
-	if isEmpty, err := editGitRepo.IsEmpty(); err == nil && !isEmpty {
-		_ = repo_model.UpdateRepositoryCols(ctx, &repo_model.Repository{ID: editRepo.ID, IsEmpty: false}, "is_empty")
-	}
+	_ = repo_model.UpdateRepositoryCols(ctx, &repo_model.Repository{ID: editRepo.ID, IsEmpty: false}, "is_empty")
 }
 
 func forkToEditFileCommon(ctx *context.Context, editOperation, treePath string, notEditableMessage any) {

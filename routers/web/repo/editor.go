@@ -402,7 +402,7 @@ func editFilePost(ctx *context.Context, form forms.EditRepoFileForm, isNewFile b
 		}
 	}
 
-	updateEditRepositoryIsEmpty(ctx, editRepo)
+	markRepositoryAsNonEmpty(ctx, editRepo) // a file has been edited, so the repository is no longer empty
 
 	redirectForCommitChoice(ctx, editRepo, form.CommitChoice, branchName, form.TreePath)
 }
@@ -829,7 +829,7 @@ func UploadFilePost(ctx *context.Context) {
 		return
 	}
 
-	updateEditRepositoryIsEmpty(ctx, editRepo)
+	markRepositoryAsNonEmpty(ctx, editRepo) // a file has been uploaded, so the repository is no longer empty
 
 	redirectForCommitChoice(ctx, editRepo, form.CommitChoice, branchName, form.TreePath)
 }
