@@ -147,6 +147,9 @@ func prepareToRenderFile(ctx *context.Context, entry *git.TreeEntry) {
 		ctx.Data["EditFileTooltip"] = ctx.Tr("repo.editor.cannot_edit_non_text_files")
 	}
 
+	canEnableEditor := ctx.Repo.CanEnableEditor(ctx, ctx.Doer)
+	ctx.Data["CanEnableEditor"] = canEnableEditor
+
 	// read all needed attributes which will be used later
 	// there should be no performance different between reading 2 or 4 here
 	attrsMap, err := attribute.CheckAttributes(ctx, ctx.Repo.GitRepo, ctx.Repo.CommitID, attribute.CheckAttributeOpts{
@@ -244,7 +247,7 @@ func prepareToRenderFile(ctx *context.Context, entry *git.TreeEntry) {
 			ctx.Data["LineEscapeStatus"] = statuses
 		}
 		if !fInfo.isLFSFile {
-			if ctx.Repo.CanEnableEditor() {
+			if canEnableEditor {
 				if !ctx.IsSigned {
 					ctx.Data["CanEditFile"] = false
 					ctx.Data["EditFileTooltip"] = ctx.Tr("repo.editor.must_be_signed_in")
@@ -308,7 +311,7 @@ func prepareToRenderFile(ctx *context.Context, entry *git.TreeEntry) {
 		}
 	}
 
-	if ctx.Repo.CanEnableEditor() {
+	if canEnableEditor {
 		if !ctx.IsSigned {
 			ctx.Data["CanDeleteFile"] = false
 			ctx.Data["DeleteFileTooltip"] = ctx.Tr("repo.editor.must_be_signed_in")

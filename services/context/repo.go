@@ -130,8 +130,9 @@ func GetEditableRepository(ctx context.Context, user *user_model.User, repo *rep
 
 // CanEnableEditor returns true if the web editor can be enabled for this repository,
 // either by directly writing to the repository or to a user fork.
-func (r *Repository) CanEnableEditor() bool {
-	return r.RefFullName.IsBranch() && r.Repository.CanEnableEditor()
+func (r *Repository) CanEnableEditor(ctx context.Context, user *user_model.User) bool {
+	return r.RefFullName.IsBranch() && r.Repository.CanEnableEditor() &&
+		(CanWriteToBranch(ctx, user, r.Repository, r.BranchName) || (r.Permission.CanRead(unit_model.TypeCode) && r.Permission.CanRead(unit_model.TypePullRequests)))
 }
 
 // CanCreateBranch returns true if repository is editable and user has proper access level.
@@ -155,7 +156,7 @@ func RepoMustNotBeArchived() func(ctx *Context) {
 // MustEnableEditor checks if the web editor can be enabled for this repository
 func MustEnableEditor() func(ctx *Context) {
 	return func(ctx *Context) {
-		if !ctx.Repo.CanEnableEditor() {
+		if !ctx.Repo.CanEnableEditor(ctx, ctx.Doer) {
 			ctx.NotFound(nil)
 		}
 	}
@@ -167,13 +168,6 @@ func MustBeAbleToUpload() func(ctx *Context) {
 		if !setting.Repository.Upload.Enabled || !ctx.Repo.Repository.CanEnableEditor() {
 			ctx.NotFound(nil)
 		}
-	}
-}
-
-// MustHaveEditableRepository checks that there exists a repository that can be written
-// to by the user for editing.
-func MustHaveEditableRepository() func(ctx *Context) {
-	return func(ctx *Context) {
 		editRepo, _, _ := GetEditableRepository(ctx, ctx.Doer, ctx.Repo.Repository, ctx.Repo.BranchName)
 		if editRepo == nil {
 			ctx.NotFound(nil)

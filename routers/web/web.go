@@ -1336,7 +1336,7 @@ func registerWebRoutes(m *web.Router) {
 		m.Group("", func() {
 			m.Post("/upload-file", repo.UploadFileToServer)
 			m.Post("/upload-remove", web.Bind(forms.RemoveUploadFileForm{}), repo.RemoveUploadFileFromServer)
-		}, context.MustBeAbleToUpload(), context.MustHaveEditableRepository())
+		}, context.MustBeAbleToUpload())
 
 		m.Group("/branches", func() {
 			m.Group("/_new", func() {
