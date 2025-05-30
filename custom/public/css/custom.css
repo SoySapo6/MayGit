@@ -1,0 +1,35 @@
+/* custom.css — MayHub Style */
+body {
+  background-color: #000; /* negro */
+  color: #fff; /* texto blanco */
+  font-family: 'Orbitron', sans-serif;
+  background-image: linear-gradient(145deg, #1a1a1a, #2e2e2e);
+  background-attachment: fixed;
+}
+
+a {
+  color: #00ffff !important;
+}
+
+.navbar, .footer {
+  background-color: #1f1f1f !important;
+  border-bottom: 2px solid #888;
+}
+
+input, textarea, select {
+  background-color: #111;
+  color: #eee;
+  border: 1px solid #666;
+}
+
+.btn {
+  background-color: #444;
+  color: #fff;
+  border-radius: 10px;
+  border: 1px solid #aaa;
+  transition: 0.2s ease-in-out;
+}
+.btn:hover {
+  background-color: #666;
+  transform: scale(1.05);
+}
