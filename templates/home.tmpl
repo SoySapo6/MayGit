@@ -1,4 +1,205 @@
 {{template "base/head" .}}
+
+<style>
+/* Estilo metálico personalizado para MayGit */
+.page-content.home {
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 25%, #1a1a1a 50%, #2d2d2d 75%, #1a1a1a 100%);
+    background-size: 40px 40px;
+    animation: metalTexture 20s linear infinite;
+    min-height: 100vh;
+    position: relative;
+}
+
+.page-content.home::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, 
+        rgba(255,255,255,0.1) 0%, 
+        rgba(0,0,0,0.3) 25%, 
+        rgba(255,255,255,0.05) 50%, 
+        rgba(0,0,0,0.3) 75%, 
+        rgba(255,255,255,0.1) 100%);
+    pointer-events: none;
+}
+
+@keyframes metalTexture {
+    0% { background-position: 0 0; }
+    100% { background-position: 40px 40px; }
+}
+
+/* Logo con efecto metálico */
+.logo {
+    filter: drop-shadow(0 0 20px rgba(255,255,255,0.3)) 
+            drop-shadow(0 5px 15px rgba(0,0,0,0.5));
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, 
+        rgba(255,255,255,0.2), 
+        rgba(128,128,128,0.1), 
+        rgba(0,0,0,0.3));
+    padding: 20px;
+    transition: all 0.3s ease;
+}
+
+.logo:hover {
+    transform: scale(1.05);
+    filter: drop-shadow(0 0 30px rgba(255,255,255,0.5)) 
+            drop-shadow(0 8px 25px rgba(0,0,0,0.7));
+}
+
+/* Títulos con efecto metálico */
+.hero h1, .hero h2 {
+    background: linear-gradient(45deg, 
+        #ffffff 0%, 
+        #c0c0c0 25%, 
+        #ffffff 50%, 
+        #a0a0a0 75%, 
+        #ffffff 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    font-weight: 700;
+    letter-spacing: 1px;
+}
+
+.hero h1 {
+    font-size: 3.5rem !important;
+    margin: 30px 0 !important;
+}
+
+.hero h2 {
+    font-size: 1.8rem !important;
+    margin: 20px 0 !important;
+}
+
+/* Headers de secciones */
+.ui.icon.header {
+    background: linear-gradient(135deg, 
+        #f8f8f8 0%, 
+        #e0e0e0 25%, 
+        #f8f8f8 50%, 
+        #d0d0d0 75%, 
+        #f8f8f8 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    background-clip: text !important;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.3) !important;
+    font-weight: 600 !important;
+    position: relative;
+}
+
+/* Contenedores con efecto metálico */
+.ui.grid > .column {
+    background: linear-gradient(145deg, 
+        rgba(255,255,255,0.1) 0%, 
+        rgba(200,200,200,0.05) 50%, 
+        rgba(0,0,0,0.1) 100%);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 15px;
+    padding: 30px !important;
+    margin: 15px;
+    backdrop-filter: blur(10px);
+    box-shadow: 
+        inset 0 1px 0 rgba(255,255,255,0.2),
+        inset 0 -1px 0 rgba(0,0,0,0.2),
+        0 10px 30px rgba(0,0,0,0.3),
+        0 0 0 1px rgba(255,255,255,0.1);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.ui.grid > .column::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, 
+        transparent, 
+        rgba(255,255,255,0.1), 
+        transparent);
+    transition: left 0.5s ease;
+}
+
+.ui.grid > .column:hover::before {
+    left: 100%;
+}
+
+.ui.grid > .column:hover {
+    transform: translateY(-5px);
+    box-shadow: 
+        inset 0 1px 0 rgba(255,255,255,0.3),
+        inset 0 -1px 0 rgba(0,0,0,0.3),
+        0 20px 40px rgba(0,0,0,0.4),
+        0 0 0 1px rgba(255,255,255,0.2);
+}
+
+/* Párrafos con mejor contraste */
+p.large {
+    color: #e8e8e8 !important;
+    font-size: 1.2rem !important;
+    line-height: 1.6 !important;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.5) !important;
+    font-weight: 400 !important;
+}
+
+/* SVG icons con efecto metálico */
+.ui.icon.header svg {
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+    color: #ffffff !important;
+}
+
+/* Grid principal */
+.ui.stackable.grid {
+    position: relative;
+    z-index: 1;
+}
+
+/* Animación sutil para el fondo */
+.page-content.home {
+    animation: metalTexture 20s linear infinite,
+               subtleGlow 4s ease-in-out infinite alternate;
+}
+
+@keyframes subtleGlow {
+    0% { box-shadow: inset 0 0 50px rgba(255,255,255,0.05); }
+    100% { box-shadow: inset 0 0 50px rgba(255,255,255,0.1); }
+}
+
+/* Responsivo */
+@media (max-width: 768px) {
+    .hero h1 {
+        font-size: 2.5rem !important;
+    }
+    
+    .hero h2 {
+        font-size: 1.4rem !important;
+    }
+    
+    .ui.grid > .column {
+        margin: 10px 5px;
+        padding: 20px !important;
+    }
+}
+
+/* Centrar mejor el contenido principal */
+.sixteen.wide.center.aligned.centered.column {
+    background: rgba(255,255,255,0.05) !important;
+    border-radius: 20px !important;
+    backdrop-filter: blur(15px) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    box-shadow: 0 15px 35px rgba(0,0,0,0.3) !important;
+    margin: 20px !important;
+    padding: 40px !important;
+}
+</style>
+
 <div class="page-content home">
 	<div class="ui stackable middle very relaxed page grid">
 		<div class="sixteen wide center aligned centered column">
