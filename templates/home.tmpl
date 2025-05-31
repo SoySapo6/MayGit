@@ -1,13 +1,16 @@
 {{template "base/head" .}}
 
 <style>
-/* Estilo metálico personalizado para MayGit */
+/* Estilo metálico personalizado para MayGit - Totalmente Responsive */
+
 .page-content.home {
     background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 25%, #1a1a1a 50%, #2d2d2d 75%, #1a1a1a 100%);
     background-size: 40px 40px;
     animation: metalTexture 20s linear infinite;
     min-height: 100vh;
     position: relative;
+    padding: 0;
+    margin: 0;
 }
 
 .page-content.home::before {
@@ -42,6 +45,8 @@
         rgba(0,0,0,0.3));
     padding: 20px;
     transition: all 0.3s ease;
+    max-width: 100%;
+    height: auto;
 }
 
 .logo:hover {
@@ -64,16 +69,17 @@
     text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
     font-weight: 700;
     letter-spacing: 1px;
+    text-align: center;
 }
 
 .hero h1 {
-    font-size: 3.5rem !important;
-    margin: 30px 0 !important;
+    font-size: clamp(2rem, 5vw, 3.5rem) !important;
+    margin: 20px 0 !important;
 }
 
 .hero h2 {
-    font-size: 1.8rem !important;
-    margin: 20px 0 !important;
+    font-size: clamp(1.2rem, 3vw, 1.8rem) !important;
+    margin: 15px 0 !important;
 }
 
 /* Headers de secciones */
@@ -90,6 +96,7 @@
     text-shadow: 1px 1px 2px rgba(0,0,0,0.3) !important;
     font-weight: 600 !important;
     position: relative;
+    font-size: clamp(1.3rem, 2.5vw, 1.8rem) !important;
 }
 
 /* Contenedores con efecto metálico */
@@ -100,8 +107,8 @@
         rgba(0,0,0,0.1) 100%);
     border: 1px solid rgba(255,255,255,0.2);
     border-radius: 15px;
-    padding: 30px !important;
-    margin: 15px;
+    padding: clamp(15px, 4vw, 30px) !important;
+    margin: clamp(5px, 2vw, 15px);
     backdrop-filter: blur(10px);
     box-shadow: 
         inset 0 1px 0 rgba(255,255,255,0.2),
@@ -111,6 +118,8 @@
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .ui.grid > .column::before {
@@ -132,33 +141,68 @@
 }
 
 .ui.grid > .column:hover {
-    transform: translateY(-5px);
+    transform: translateY(-2px);
     box-shadow: 
         inset 0 1px 0 rgba(255,255,255,0.3),
         inset 0 -1px 0 rgba(0,0,0,0.3),
-        0 20px 40px rgba(0,0,0,0.4),
+        0 15px 35px rgba(0,0,0,0.4),
         0 0 0 1px rgba(255,255,255,0.2);
 }
 
 /* Párrafos con mejor contraste */
 p.large {
     color: #e8e8e8 !important;
-    font-size: 1.2rem !important;
+    font-size: clamp(1rem, 2.5vw, 1.2rem) !important;
     line-height: 1.6 !important;
     text-shadow: 1px 1px 2px rgba(0,0,0,0.5) !important;
     font-weight: 400 !important;
+    text-align: center;
+    margin: 0 auto;
+    max-width: 90%;
+}
+
+/* Enlace de WhatsApp con estilo especial */
+.whatsapp-link {
+    display: inline-block;
+    background: linear-gradient(135deg, #25d366 0%, #128c7e 100%);
+    color: white !important;
+    padding: 12px 25px;
+    border-radius: 25px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: clamp(0.9rem, 2vw, 1.1rem);
+    box-shadow: 0 5px 15px rgba(37, 211, 102, 0.3);
+    transition: all 0.3s ease;
+    margin: 15px 0;
+    text-align: center;
+}
+
+.whatsapp-link:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(37, 211, 102, 0.4);
+    text-decoration: none;
+    color: white !important;
 }
 
 /* SVG icons con efecto metálico */
 .ui.icon.header svg {
     filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
     color: #ffffff !important;
+    width: clamp(24px, 5vw, 32px);
+    height: clamp(24px, 5vw, 32px);
 }
 
-/* Grid principal */
+/* Grid principal con mejor responsive */
 .ui.stackable.grid {
     position: relative;
     z-index: 1;
+    padding: 0 10px;
+    margin: 0 !important;
+    width: 100% !important;
+}
+
+.ui.stackable.grid .row {
+    padding: 0 !important;
 }
 
 /* Animación sutil para el fondo */
@@ -172,22 +216,6 @@ p.large {
     100% { box-shadow: inset 0 0 50px rgba(255,255,255,0.1); }
 }
 
-/* Responsivo */
-@media (max-width: 768px) {
-    .hero h1 {
-        font-size: 2.5rem !important;
-    }
-    
-    .hero h2 {
-        font-size: 1.4rem !important;
-    }
-    
-    .ui.grid > .column {
-        margin: 10px 5px;
-        padding: 20px !important;
-    }
-}
-
 /* Centrar mejor el contenido principal */
 .sixteen.wide.center.aligned.centered.column {
     background: rgba(255,255,255,0.05) !important;
@@ -195,60 +223,151 @@ p.large {
     backdrop-filter: blur(15px) !important;
     border: 1px solid rgba(255,255,255,0.1) !important;
     box-shadow: 0 15px 35px rgba(0,0,0,0.3) !important;
-    margin: 20px !important;
-    padding: 40px !important;
+    margin: clamp(10px, 3vw, 20px) !important;
+    padding: clamp(20px, 5vw, 40px) !important;
+    width: calc(100% - clamp(20px, 6vw, 40px)) !important;
+    box-sizing: border-box;
+}
+
+/* Responsive específico para móviles */
+@media (max-width: 768px) {
+    .logo {
+        width: clamp(150px, 40vw, 220px);
+        height: clamp(150px, 40vw, 220px);
+        padding: 15px;
+    }
+    
+    .ui.grid > .column {
+        margin: 8px 0 !important;
+        padding: 20px 15px !important;
+        border-radius: 12px;
+    }
+    
+    .ui.stackable.grid {
+        padding: 0 5px;
+    }
+    
+    .sixteen.wide.center.aligned.centered.column {
+        margin: 10px 5px !important;
+        padding: 25px 15px !important;
+        width: calc(100% - 10px) !important;
+    }
+    
+    .whatsapp-link {
+        padding: 10px 20px;
+        font-size: 1rem;
+        display: block;
+        width: fit-content;
+        margin: 15px auto;
+    }
+}
+
+@media (max-width: 480px) {
+    .logo {
+        width: 150px;
+        height: 150px;
+        padding: 10px;
+    }
+    
+    .hero h1 {
+        font-size: 2rem !important;
+        margin: 15px 0 !important;
+    }
+    
+    .hero h2 {
+        font-size: 1.1rem !important;
+        margin: 10px 0 !important;
+    }
+    
+    .ui.icon.header {
+        font-size: 1.3rem !important;
+    }
+    
+    p.large {
+        font-size: 1rem !important;
+        padding: 0 5px;
+    }
+    
+    .ui.grid > .column {
+        padding: 15px 10px !important;
+        margin: 5px 0 !important;
+    }
+    
+    .sixteen.wide.center.aligned.centered.column {
+        padding: 20px 10px !important;
+        margin: 10px 2px !important;
+    }
+}
+
+/* Mejoras adicionales para tablets */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .logo {
+        width: 200px;
+        height: 200px;
+    }
+    
+    .ui.grid > .column {
+        padding: 25px !important;
+        margin: 12px;
+    }
 }
 </style>
 
 <div class="page-content home">
-	<div class="ui stackable middle very relaxed page grid">
-		<div class="sixteen wide center aligned centered column">
-			<div>
-				<img class="logo" width="220" height="220" src="{{AssetUrlPrefix}}/img/logo.svg"/>
-			</div>
-			<div class="hero">
-				<h1 class="ui icon header title">
-					{{AppName}}
-				</h1>
-				<h2>{{.i18n.Tr "startpage.app_desc"}}</h2>
-			</div>
-		</div>
-	</div>
-	<div class="ui stackable middle very relaxed page grid">
-		<div class="eight wide center column">
-			<h1 class="hero ui icon header">
-				{{svg "octicon-flame"}} {{.i18n.Tr "startpage.install"}}
-			</h1>
-			<p class="large">
-				{{.i18n.Tr "startpage.install_desc" | Str2html}}
-			</p>
-		</div>
-		<div class="eight wide center column">
-			<h1 class="hero ui icon header">
-				{{svg "octicon-device-desktop"}} {{.i18n.Tr "startpage.platform"}}
-			</h1>
-			<p class="large">
-				{{.i18n.Tr "startpage.platform_desc" | Str2html}}
-			</p>
-		</div>
-	</div>
-	<div class="ui stackable middle very relaxed page grid">
-		<div class="eight wide center column">
-			<h1 class="hero ui icon header">
-				{{svg "octicon-rocket"}} {{.i18n.Tr "startpage.lightweight"}}
-			</h1>
-			<p class="large">
-				{{.i18n.Tr "startpage.lightweight_desc" | Str2html}}
-			</p>
-		</div>
-		<div class="eight wide center column">
-			<h1 class="hero ui icon header">
-				{{svg "octicon-code"}} {{.i18n.Tr "startpage.license"}}
-			</h1>
-			<p class="large">
-				{{.i18n.Tr "startpage.license_desc" | Str2html}}
-			</p>
-		</div>
-	</div>
+    <div class="ui stackable middle very relaxed page grid">
+        <div class="sixteen wide center aligned centered column">
+            <div>
+                <img class="logo" width="220" height="220" src="{{AssetUrlPrefix}}/img/logo.svg"/>
+            </div>
+            <div class="hero">
+                <h1 class="ui icon header title">
+                    {{AppName}}
+                </h1>
+                <h2>Ideal Para Tus Proyectos de Todo!!</h2>
+                <div style="margin-top: 25px;">
+                    <a href="https://whatsapp.com/channel/0029VayXJte65yD6LQGiRB0R" class="whatsapp-link" target="_blank">
+                        📱 Sígueme en WhatsApp
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="ui stackable middle very relaxed page grid">
+        <div class="eight wide center column">
+            <h1 class="hero ui icon header">
+                {{svg "octicon-flame"}} {{.i18n.Tr "startpage.install"}}
+            </h1>
+            <p class="large">
+                {{.i18n.Tr "startpage.install_desc" | Str2html}}
+            </p>
+        </div>
+        <div class="eight wide center column">
+            <h1 class="hero ui icon header">
+                {{svg "octicon-device-desktop"}} {{.i18n.Tr "startpage.platform"}}
+            </h1>
+            <p class="large">
+                {{.i18n.Tr "startpage.platform_desc" | Str2html}}
+            </p>
+        </div>
+    </div>
+    <div class="ui stackable middle very relaxed page grid">
+        <div class="eight wide center column">
+            <h1 class="hero ui icon header">
+                {{svg "octicon-rocket"}} {{.i18n.Tr "startpage.lightweight"}}
+            </h1>
+            <p class="large">
+                {{.i18n.Tr "startpage.lightweight_desc" | Str2html}}
+            </p>
+        </div>
+        <div class="eight wide center column">
+            <h1 class="hero ui icon header">
+                {{svg "octicon-code"}} Perfecto para Desarrolladores
+            </h1>
+            <p class="large">
+                Una plataforma completa y fácil de usar para todos tus proyectos de desarrollo. ¡Simple, poderoso y eficiente!
+            </p>
+        </div>
+    </div>
 </div>
+
 {{template "base/footer" .}}
