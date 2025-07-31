@@ -58,7 +58,7 @@ RUN addgroup \
 ENV USER git
 ENV GITEA_CUSTOM /data/gitea
 
-VOLUME ["/data"]
+# VOLUME ["/data"]
 
 ENTRYPOINT ["/usr/bin/entrypoint"]
 CMD ["/bin/s6-svscan", "/etc/s6"]
